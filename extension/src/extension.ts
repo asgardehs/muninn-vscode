@@ -5,6 +5,9 @@ import { Logger } from "./log";
 import { SidecarProcess } from "./sidecar/process";
 import { RpcClient } from "./sidecar/client";
 import { SidecarMessageReader, SidecarMessageWriter } from "./sidecar/lspBridge";
+import { SidecarState } from "./sidecar/state";
+import { HierarchyTreeProvider } from "./views/hierarchyTreeProvider";
+import { lookupHerePrefill, runLookup } from "./commands/lookup";
 
 let sidecar: SidecarProcess | null = null;
 let logger: Logger | null = null;
@@ -20,15 +23,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // message instead of "command not found" when no workspace is open.
   // The sidecar (and therefore the client) is conditional on a workspace.
   let client: RpcClient | null = null;
+  let state: SidecarState | null = null;
+  let treeProvider: HierarchyTreeProvider | null = null;
+
+  const requireSidecar = (action: string): boolean => {
+    if (!client) {
+      vscode.window.showWarningMessage(
+        `Muninn: open a folder first — ${action} needs an active sidecar.`
+      );
+      return false;
+    }
+    return true;
+  };
 
   context.subscriptions.push(
     vscode.commands.registerCommand("muninn.ping", async () => {
-      if (!client) {
-        vscode.window.showWarningMessage(
-          "Muninn: open a folder first — the sidecar starts per-workspace."
-        );
-        return;
-      }
+      if (!requireSidecar("ping") || !client) return;
       try {
         const result = await client.request("rpc/ping");
         vscode.window.showInformationMessage(`Muninn ping: ${JSON.stringify(result)}`);
@@ -38,6 +48,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand("muninn.showSidecarLogs", () => {
       logger?.show();
+    }),
+    vscode.commands.registerCommand("muninn.lookup", async () => {
+      if (!requireSidecar("lookup") || !client || !state || !logger) return;
+      await runLookup(client, state, (m) => logger?.info(m));
+    }),
+    vscode.commands.registerCommand("muninn.lookupHere", async () => {
+      if (!requireSidecar("lookupHere") || !client || !state || !logger) return;
+      const active = vscode.window.activeTextEditor?.document.fileName;
+      const prefill = lookupHerePrefill(active);
+      await runLookup(client, state, (m) => logger?.info(m), { prefill });
+    }),
+    vscode.commands.registerCommand("muninn.refreshVault", async () => {
+      if (!requireSidecar("refreshVault") || !client) return;
+      try {
+        const res = await client.request<{ noteCount: number }>("vault/refresh");
+        vscode.window.showInformationMessage(`Muninn: refreshed ${res.noteCount} notes.`);
+        treeProvider?.refresh();
+      } catch (err) {
+        vscode.window.showErrorMessage(`Muninn refresh failed: ${err}`);
+      }
     })
   );
 
@@ -57,9 +87,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   client = new RpcClient(sidecar, logger);
+  state = new SidecarState();
   client.onNotification((method, params) => {
     logger?.info(`notification ${method}: ${JSON.stringify(params)}`);
+    if (method === "sidecar/ready") {
+      state?.setReady((params ?? {}) as { vaultPath?: string });
+    } else if (method === "vault/changed") {
+      treeProvider?.refresh();
+    }
   });
+
+  treeProvider = new HierarchyTreeProvider(client, state);
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider("muninn.hierarchyView", treeProvider)
+  );
 
   sidecar.start();
 

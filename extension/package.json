@@ -29,6 +29,20 @@
   "contributes": {
     "commands": [
       {
+        "command": "muninn.lookup",
+        "title": "Muninn: Lookup",
+        "icon": "$(search)"
+      },
+      {
+        "command": "muninn.lookupHere",
+        "title": "Muninn: Lookup Under Current Note"
+      },
+      {
+        "command": "muninn.refreshVault",
+        "title": "Muninn: Refresh Vault Index",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "muninn.ping",
         "title": "Muninn: Ping Sidecar"
       },
@@ -37,6 +51,46 @@
         "title": "Muninn: Show Sidecar Logs"
       }
     ],
+    "keybindings": [
+      {
+        "command": "muninn.lookup",
+        "key": "ctrl+l",
+        "mac": "cmd+l",
+        "when": "editorTextFocus || !editorFocus"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "muninn",
+          "title": "Muninn",
+          "icon": "$(book)"
+        }
+      ]
+    },
+    "views": {
+      "muninn": [
+        {
+          "id": "muninn.hierarchyView",
+          "name": "Hierarchy",
+          "contextualTitle": "Muninn"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "muninn.refreshVault",
+          "when": "view == muninn.hierarchyView",
+          "group": "navigation"
+        },
+        {
+          "command": "muninn.lookup",
+          "when": "view == muninn.hierarchyView",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Muninn",
       "properties": {
