@@ -2,11 +2,7 @@ package schema
 
 import "testing"
 
-func TestField_TargetParsesFromYAML(t *testing.T) {
-	// Construct a Field directly in Go to verify:
-	// 1. TypeReference constant exists
-	// 2. Field struct accepts Target field
-	// 3. Target value is properly stored
+func TestField_HasTargetAndReferenceType(t *testing.T) {
 	field := Field{
 		Key:      "instructor",
 		Type:     TypeReference,
