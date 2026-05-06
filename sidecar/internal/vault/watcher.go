@@ -12,7 +12,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// ChangeKind describes what happened to a note.
+// ChangeKind describes what happened to the affected file.
 type ChangeKind string
 
 const (
@@ -21,19 +21,32 @@ const (
 	ChangeDelete ChangeKind = "delete"
 )
 
-// Change is a single observed filesystem event for a vault note.
+// ChangeSource discriminates between vault note edits (Markdown files in the
+// note tree) and schema edits (YAML files inside .muninn/schemas/).
+type ChangeSource string
+
+const (
+	SourceNote   ChangeSource = "note"
+	SourceSchema ChangeSource = "schema"
+)
+
+// Change is a single observed filesystem event.
 type Change struct {
 	RelPath string
 	Kind    ChangeKind
+	Source  ChangeSource
 }
 
-// Watch observes the vault root recursively for changes to .md files. Hidden
-// directories (.git, .muninn) are skipped. Each observed change is debounced
-// (per path, 100ms) and emitted on the returned channel. The channel closes
-// when ctx is cancelled or the underlying watcher fails.
+// schemaDir returns the vault-relative path to the schema directory.
+const schemaDir = ".muninn/schemas"
+
+// Watch observes the vault for both note (.md) and schema (.muninn/schemas/*.yml)
+// changes. Hidden directories are skipped except for .muninn/schemas/, which is
+// watched explicitly so user-authored schemas trigger live reload. Per-path
+// debounce (100ms) coalesces editor save bursts. The channel closes when ctx
+// is cancelled or the watcher fails.
 //
-// The caller is responsible for consuming the channel; events are dropped if
-// the consumer falls behind by more than 64 events.
+// Events are dropped if the consumer falls behind by more than 64.
 func (v *Vault) Watch(ctx context.Context, logger *log.Logger) (<-chan Change, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -44,10 +57,25 @@ func (v *Vault) Watch(ctx context.Context, logger *log.Logger) (<-chan Change, e
 		_ = w.Close()
 		return nil, err
 	}
+	addSchemaDir(w, v.root, logger)
 
 	out := make(chan Change, 64)
 	go runWatcher(ctx, w, v.root, out, logger)
 	return out, nil
+}
+
+// addSchemaDir watches <root>/.muninn/schemas/ if it already exists. We watch
+// it explicitly because walkAndAdd skips hidden directories, but users
+// expect schemas they drop here to take effect live.
+func addSchemaDir(w *fsnotify.Watcher, root string, logger *log.Logger) {
+	abs := filepath.Join(root, schemaDir)
+	info, err := os.Stat(abs)
+	if err != nil || !info.IsDir() {
+		return
+	}
+	if err := w.Add(abs); err != nil {
+		logger.Printf("watcher: add schema dir %q: %v", abs, err)
+	}
 }
 
 func walkAndAdd(w *fsnotify.Watcher, root string) error {
@@ -78,12 +106,12 @@ func runWatcher(ctx context.Context, w *fsnotify.Watcher, root string, out chan<
 	debounce := make(map[string]*pending)
 	const debounceFor = 100 * time.Millisecond
 
-	emit := func(rel string, kind ChangeKind) {
+	emit := func(c Change) {
 		select {
-		case out <- Change{RelPath: rel, Kind: kind}:
+		case out <- c:
 		case <-ctx.Done():
 		default:
-			logger.Printf("watcher: dropped event for %s (consumer slow)", rel)
+			logger.Printf("watcher: dropped %s event for %s (consumer slow)", c.Source, c.RelPath)
 		}
 	}
 
@@ -97,11 +125,19 @@ func runWatcher(ctx context.Context, w *fsnotify.Watcher, root string, out chan<
 				return
 			}
 
-			// If a directory was created, add it to the watch set so we see
-			// .md files inside it.
 			if event.Has(fsnotify.Create) {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-					if !strings.HasPrefix(filepath.Base(event.Name), ".") {
+					base := filepath.Base(event.Name)
+					rel, _ := filepath.Rel(root, event.Name)
+					switch {
+					case rel == schemaDir:
+						// User just created .muninn/schemas/ at the
+						// root — start watching it so subsequent YAML
+						// drops are picked up.
+						if err := w.Add(event.Name); err != nil {
+							logger.Printf("watcher: add schema dir %q: %v", event.Name, err)
+						}
+					case !strings.HasPrefix(base, "."):
 						if err := walkAndAdd(w, event.Name); err != nil {
 							logger.Printf("watcher: add %q: %v", event.Name, err)
 						}
@@ -110,11 +146,12 @@ func runWatcher(ctx context.Context, w *fsnotify.Watcher, root string, out chan<
 				}
 			}
 
-			if !strings.HasSuffix(event.Name, ".md") {
-				continue
-			}
 			rel, err := filepath.Rel(root, event.Name)
 			if err != nil {
+				continue
+			}
+			source, ok := classify(rel)
+			if !ok {
 				continue
 			}
 
@@ -133,12 +170,10 @@ func runWatcher(ctx context.Context, w *fsnotify.Watcher, root string, out chan<
 			if existing, ok := debounce[rel]; ok {
 				existing.t.Stop()
 			}
-			capturedRel, capturedKind := rel, kind
+			captured := Change{RelPath: rel, Kind: kind, Source: source}
 			debounce[rel] = &pending{
 				kind: kind,
-				t: time.AfterFunc(debounceFor, func() {
-					emit(capturedRel, capturedKind)
-				}),
+				t:    time.AfterFunc(debounceFor, func() { emit(captured) }),
 			}
 
 		case err, ok := <-w.Errors:
@@ -152,4 +187,17 @@ func runWatcher(ctx context.Context, w *fsnotify.Watcher, root string, out chan<
 			logger.Printf("watcher: %v", err)
 		}
 	}
+}
+
+// classify decides which channel a vault-relative path belongs to. Returns
+// false for paths we don't care about (non-md, non-schema files).
+func classify(rel string) (ChangeSource, bool) {
+	rel = filepath.ToSlash(rel)
+	if strings.HasPrefix(rel, schemaDir+"/") && strings.HasSuffix(rel, ".yml") {
+		return SourceSchema, true
+	}
+	if strings.HasSuffix(rel, ".md") {
+		return SourceNote, true
+	}
+	return "", false
 }

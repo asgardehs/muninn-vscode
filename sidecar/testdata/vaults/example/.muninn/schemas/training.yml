@@ -1,0 +1,44 @@
+id: training
+label: Training Record
+description: Record of an EHS training session — who attended, what was covered, and when refreshers are due.
+pattern: "ehs.training.**"
+priority: 100
+
+frontmatter:
+  - key: title
+    type: string
+    required: true
+  - key: date
+    type: date
+    required: true
+  - key: instructor
+    type: string
+    required: true
+  - key: attendees
+    type: string-array
+    required: false
+  - key: topic
+    type: string
+    required: false
+  - key: refresher_due
+    type: date
+    required: false
+    description: Date by which a refresher is required.
+  - key: status
+    type: enum
+    required: false
+    vocabulary: [scheduled, completed, cancelled]
+
+template:
+  body: |
+    ## Topic
+
+    ## Attendees
+
+    ## Materials
+
+    ## Outcomes / sign-off
+  frontmatterDefaults:
+    date: "{{today}}"
+    instructor: "{{user}}"
+    status: scheduled

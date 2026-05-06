@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -118,4 +120,87 @@ func keysOf(m map[string][]byte) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// TestLoadLayersVaultOnEmbedded asserts the property Adam called out on
+// 2026-05-06: dropping a custom schema into <vault>/.muninn/schemas/ must
+// not silently delete the embedded generic pack the user was relying on.
+func TestLoadLayersVaultOnEmbedded(t *testing.T) {
+	dir := t.TempDir()
+	schemas := filepath.Join(dir, ".muninn", "schemas")
+	if err := os.MkdirAll(schemas, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Override the embedded "daily" schema with custom fields and priority.
+	override := []byte(`
+id: daily
+label: Custom Daily Override
+pattern: "daily.*"
+priority: 999
+frontmatter:
+  - key: title
+    type: string
+    required: true
+`)
+	if err := os.WriteFile(filepath.Join(schemas, "daily.yml"), override, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a brand-new schema not in the embedded pack.
+	custom := []byte(`
+id: workout
+label: Workout Log
+pattern: "fitness.workouts.*"
+priority: 50
+frontmatter:
+  - key: title
+    type: string
+    required: true
+`)
+	if err := os.WriteFile(filepath.Join(schemas, "workout.yml"), custom, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Custom override won.
+	daily := r.Get("daily")
+	if daily == nil {
+		t.Fatal("daily schema missing after overlay")
+	}
+	if daily.Label != "Custom Daily Override" {
+		t.Errorf("daily.Label = %q, want Custom Daily Override", daily.Label)
+	}
+	if daily.Priority != 999 {
+		t.Errorf("daily.Priority = %d, want 999", daily.Priority)
+	}
+
+	// Brand-new schema is present.
+	if r.Get("workout") == nil {
+		t.Errorf("workout schema not loaded from vault")
+	}
+
+	// Other embedded schemas are still there — they weren't dropped.
+	for _, id := range []string{"meeting", "decision", "til", "reference"} {
+		if r.Get(id) == nil {
+			t.Errorf("embedded schema %q dropped after vault overlay", id)
+		}
+	}
+}
+
+func TestLoadFallsBackToEmbeddedWhenNoVaultDir(t *testing.T) {
+	dir := t.TempDir() // no .muninn/schemas inside
+	r, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	for _, id := range []string{"daily", "meeting", "decision", "til", "reference"} {
+		if r.Get(id) == nil {
+			t.Errorf("embedded schema %q missing in fresh-vault load", id)
+		}
+	}
 }

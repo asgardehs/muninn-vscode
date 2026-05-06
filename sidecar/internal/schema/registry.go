@@ -59,43 +59,59 @@ func PackFiles(pack string) (map[string][]byte, error) {
 	return out, nil
 }
 
-// Load builds a Registry from the given vault root. If <vault>/.muninn/schemas/
-// exists, every *.yml there is loaded. Otherwise the embedded "generic" pack
-// is loaded as a sane default. Vault-defined schemas always take precedence
-// over embedded ones with the same id.
+// Load builds a Registry from the embedded "generic" pack overlaid with any
+// user-defined schemas found in <vault>/.muninn/schemas/. Vault YAML wins on
+// id collisions, but the embedded defaults remain available when they aren't
+// overridden — so dropping a single custom schema doesn't silently delete
+// the rest of the generic pack the user was relying on.
 func Load(vaultRoot string) (*Registry, error) {
+	r := newRegistry()
+	if err := r.loadDir(builtinFS, "builtin/generic"); err != nil {
+		return nil, fmt.Errorf("load embedded generic pack: %w", err)
+	}
 	vaultDir := filepath.Join(vaultRoot, ".muninn", "schemas")
 	if info, err := os.Stat(vaultDir); err == nil && info.IsDir() {
-		return loadFromDir(os.DirFS(vaultDir))
+		if err := r.loadDir(os.DirFS(vaultDir), "."); err != nil {
+			return nil, fmt.Errorf("load vault schemas: %w", err)
+		}
 	}
-	return loadFromFS(builtinFS, "builtin/generic")
+	return r, nil
 }
 
-func loadFromDir(fsys fs.FS) (*Registry, error) {
-	return loadFromFS(fsys, ".")
+func newRegistry() *Registry {
+	return &Registry{byID: make(map[string]*Schema)}
 }
 
 func loadFromFS(fsys fs.FS, dir string) (*Registry, error) {
+	r := newRegistry()
+	if err := r.loadDir(fsys, dir); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// loadDir merges every *.yml file in dir into r. Existing schemas with the
+// same id are replaced; new ids are appended.
+func (r *Registry) loadDir(fsys fs.FS, dir string) error {
 	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
-		return nil, fmt.Errorf("read schema dir %q: %w", dir, err)
+		return fmt.Errorf("read schema dir %q: %w", dir, err)
 	}
-	r := &Registry{byID: make(map[string]*Schema)}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yml") {
 			continue
 		}
 		b, err := fs.ReadFile(fsys, filepath.Join(dir, e.Name()))
 		if err != nil {
-			return nil, fmt.Errorf("read %q: %w", e.Name(), err)
+			return fmt.Errorf("read %q: %w", e.Name(), err)
 		}
 		s, err := Parse(b)
 		if err != nil {
-			return nil, fmt.Errorf("parse %q: %w", e.Name(), err)
+			return fmt.Errorf("parse %q: %w", e.Name(), err)
 		}
 		r.add(s)
 	}
-	return r, nil
+	return nil
 }
 
 func (r *Registry) add(s *Schema) {

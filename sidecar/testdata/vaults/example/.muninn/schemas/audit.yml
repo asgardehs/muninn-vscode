@@ -1,0 +1,53 @@
+id: audit
+label: Compliance Audit
+description: Record of an internal or external audit, including findings and remediation.
+pattern: "ehs.audits.**"
+priority: 100
+
+frontmatter:
+  - key: title
+    type: string
+    required: true
+  - key: audit_date
+    type: date
+    required: true
+  - key: auditor
+    type: string
+    required: true
+  - key: scope
+    type: string
+    required: false
+    description: What was in scope (e.g., regulation, site, program).
+  - key: kind
+    type: enum
+    required: false
+    vocabulary: [internal, external, regulatory, third-party]
+  - key: status
+    type: enum
+    required: false
+    vocabulary: [planned, in-progress, complete, closed]
+  - key: tags
+    type: string-array
+    required: false
+
+template:
+  body: |
+    ## Scope and methodology
+
+    ## Findings
+
+    | # | Severity | Description | Owner | Due |
+    | --- | --- | --- | --- | --- |
+    |  |  |  |  |  |
+
+    ## Remediation plan
+
+    ## Closeout notes
+  frontmatterDefaults:
+    audit_date: "{{today}}"
+    auditor: "{{user}}"
+    kind: internal
+    status: planned
+    tags:
+      - ehs
+      - audit

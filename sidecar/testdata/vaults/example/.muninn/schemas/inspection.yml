@@ -1,0 +1,48 @@
+id: inspection
+label: Safety Inspection
+description: Walkthrough record of a site, area, or piece of equipment with findings.
+pattern: "ehs.inspections.**"
+priority: 100
+
+frontmatter:
+  - key: title
+    type: string
+    required: true
+  - key: inspection_date
+    type: date
+    required: true
+  - key: inspector
+    type: string
+    required: true
+  - key: area
+    type: string
+    required: true
+    description: Site or area inspected.
+  - key: type
+    type: enum
+    required: false
+    vocabulary: [routine, monthly, quarterly, annual, ad-hoc, regulatory]
+  - key: findings_count
+    type: number
+    required: false
+  - key: status
+    type: enum
+    required: false
+    vocabulary: [in-progress, complete, follow-up-required]
+
+template:
+  body: |
+    ## Scope
+
+    ## Findings
+
+    | # | Severity | Description | Owner | Due |
+    | --- | --- | --- | --- | --- |
+    |  |  |  |  |  |
+
+    ## Notes
+  frontmatterDefaults:
+    inspection_date: "{{today}}"
+    inspector: "{{user}}"
+    status: in-progress
+    type: routine

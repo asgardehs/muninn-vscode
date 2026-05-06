@@ -143,9 +143,12 @@ func main() {
 	logger.Printf("clean shutdown")
 }
 
-// runWatcher consumes vault.Change events from the filesystem watcher,
-// updates the wikilink index, refreshes diagnostics for open documents,
-// and emits a vault/changed RPC notification per debounced batch.
+// runWatcher consumes vault.Change events from the filesystem watcher and
+// dispatches based on whether the change was a note edit or a schema edit.
+//   - Note changes: update the wikilink index, refresh diagnostics, emit a
+//     vault/changed notification.
+//   - Schema changes: reload the registry, refresh diagnostics, emit a
+//     schema/changed notification.
 func runWatcher(ctx context.Context, lspServer *lsp.Server, fw *transport.FrameWriter, logger *log.Logger) {
 	v := lspServer.Vault()
 	idx := lspServer.LinkIndex()
@@ -157,26 +160,51 @@ func runWatcher(ctx context.Context, lspServer *lsp.Server, fw *transport.FrameW
 	}
 
 	for change := range changes {
-		switch change.Kind {
-		case vault.ChangeDelete:
-			idx.Remove(change.RelPath)
-		case vault.ChangeCreate, vault.ChangeModify:
-			content, err := v.ReadNote(change.RelPath)
-			if err != nil {
-				logger.Printf("watcher: read %q: %v", change.RelPath, err)
-				continue
-			}
-			idx.Update(change.RelPath, wikilink.Extract(content))
+		switch change.Source {
+		case vault.SourceNote:
+			handleNoteChange(ctx, change, v, idx, lspServer, fw, logger)
+		case vault.SourceSchema:
+			handleSchemaChange(ctx, change, lspServer, fw, logger)
 		}
+	}
+}
 
-		lspServer.RefreshOpenDiagnostics(ctx)
-
-		if err := sendNotification(fw, "vault/changed", map[string]any{
-			"paths": []string{change.RelPath},
-			"kind":  string(change.Kind),
-		}); err != nil {
-			logger.Printf("watcher: failed to emit vault/changed: %v", err)
+func handleNoteChange(ctx context.Context, change vault.Change, v *vault.Vault, idx *wikilink.Index, lspServer *lsp.Server, fw *transport.FrameWriter, logger *log.Logger) {
+	switch change.Kind {
+	case vault.ChangeDelete:
+		idx.Remove(change.RelPath)
+	case vault.ChangeCreate, vault.ChangeModify:
+		content, err := v.ReadNote(change.RelPath)
+		if err != nil {
+			logger.Printf("watcher: read %q: %v", change.RelPath, err)
+			return
 		}
+		idx.Update(change.RelPath, wikilink.Extract(content))
+	}
+	lspServer.RefreshOpenDiagnostics(ctx)
+	if err := sendNotification(fw, "vault/changed", map[string]any{
+		"paths": []string{change.RelPath},
+		"kind":  string(change.Kind),
+	}); err != nil {
+		logger.Printf("watcher: failed to emit vault/changed: %v", err)
+	}
+}
+
+func handleSchemaChange(ctx context.Context, change vault.Change, lspServer *lsp.Server, fw *transport.FrameWriter, logger *log.Logger) {
+	registry, err := schema.Load(lspServer.Vault().Root())
+	if err != nil {
+		logger.Printf("watcher: schema reload failed: %v", err)
+		return
+	}
+	lspServer.SetSchemas(registry)
+	lspServer.RefreshOpenDiagnostics(ctx)
+	logger.Printf("watcher: reloaded %d schemas after %s %s", registry.Len(), change.Kind, change.RelPath)
+	if err := sendNotification(fw, "schema/changed", map[string]any{
+		"paths":       []string{change.RelPath},
+		"kind":        string(change.Kind),
+		"schemaCount": registry.Len(),
+	}); err != nil {
+		logger.Printf("watcher: failed to emit schema/changed: %v", err)
 	}
 }
 
