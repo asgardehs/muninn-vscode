@@ -5,7 +5,12 @@
 // that need rewriting when a note is renamed.
 package refindex
 
-import "sync"
+import (
+	"strings"
+	"sync"
+
+	"github.com/asgardehs/muninn-sidecar/internal/schema"
+)
 
 // ReferenceEdge is one frontmatter reference from a source file to a target.
 type ReferenceEdge struct {
@@ -78,4 +83,34 @@ func (idx *Index) removeBySource(sourceFile string) {
 			idx.byTarget[e.Target] = filtered
 		}
 	}
+}
+
+// ExtractEdges returns the typed reference edges declared by a schema for
+// the given frontmatter values. Only fields that act as typed references
+// (TypeReference, or TypeNoteRef with a non-empty Target) contribute edges.
+// SourceFile is left empty — the caller fills it in via Index.Update.
+func ExtractEdges(s *schema.Schema, fm map[string]any) []ReferenceEdge {
+	if s == nil {
+		return nil
+	}
+	var out []ReferenceEdge
+	for _, f := range s.Frontmatter {
+		if f.Type != schema.TypeReference && !(f.Type == schema.TypeNoteRef && f.Target != "") {
+			continue
+		}
+		raw, ok := fm[f.Key]
+		if !ok {
+			continue
+		}
+		val, ok := raw.(string)
+		if !ok || strings.TrimSpace(val) == "" {
+			continue
+		}
+		out = append(out, ReferenceEdge{
+			Field:    f.Key,
+			Target:   val,
+			SchemaID: s.ID,
+		})
+	}
+	return out
 }
