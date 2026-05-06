@@ -8,6 +8,7 @@ import { SidecarMessageReader, SidecarMessageWriter } from "./sidecar/lspBridge"
 import { SidecarState } from "./sidecar/state";
 import { HierarchyTreeProvider } from "./views/hierarchyTreeProvider";
 import { lookupHerePrefill, runLookup } from "./commands/lookup";
+import { runInstallSchemaPack } from "./commands/installSchemaPack";
 
 let sidecar: SidecarProcess | null = null;
 let logger: Logger | null = null;
@@ -68,6 +69,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } catch (err) {
         vscode.window.showErrorMessage(`Muninn refresh failed: ${err}`);
       }
+    }),
+    vscode.commands.registerCommand("muninn.installSchemaPack", async () => {
+      if (!requireSidecar("installSchemaPack") || !client || !state || !logger) return;
+      await runInstallSchemaPack(client, state, (m) => logger?.info(m));
     })
   );
 

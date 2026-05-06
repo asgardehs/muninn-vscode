@@ -43,6 +43,10 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "muninn.installSchemaPack",
+        "title": "Muninn: Install Schema Pack"
+      },
+      {
         "command": "muninn.ping",
         "title": "Muninn: Ping Sidecar"
       },

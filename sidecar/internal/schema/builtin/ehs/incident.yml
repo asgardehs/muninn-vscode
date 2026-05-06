@@ -1,0 +1,56 @@
+id: incident
+label: EHS Incident Report
+description: Workplace incident with severity classification, root cause, and corrective actions.
+pattern: "ehs.incidents.**"
+priority: 100
+
+frontmatter:
+  - key: title
+    type: string
+    required: true
+    description: Short summary of what happened.
+  - key: incident_date
+    type: date
+    required: true
+    description: Date the incident occurred (YYYY-MM-DD).
+  - key: severity
+    type: enum
+    required: true
+    vocabulary: [near-miss, first-aid, recordable, lost-time, fatality]
+    description: OSHA-style severity classification.
+  - key: location
+    type: string
+    required: true
+    description: Site, building, or area where the incident occurred.
+  - key: reporter
+    type: string
+    required: true
+    description: Person filing the report.
+  - key: status
+    type: enum
+    required: false
+    vocabulary: [open, investigating, closed]
+  - key: tags
+    type: string-array
+    required: false
+
+template:
+  body: |
+    ## What happened
+
+    ## Immediate cause
+
+    ## Root cause
+
+    ## Corrective actions
+    - [ ]
+
+    ## Follow-up review
+  frontmatterDefaults:
+    incident_date: "{{today}}"
+    reporter: "{{user}}"
+    severity: near-miss
+    status: open
+    tags:
+      - ehs
+      - incident

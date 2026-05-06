@@ -29,6 +29,21 @@ func registerSchemaHandlers(d *rpc.Dispatcher, server *lsp.Server) {
 	d.Register("schema/validate", handleSchemaValidate(server))
 	d.Register("schema/listPacks", handleSchemaListPacks())
 	d.Register("schema/exportPack", handleSchemaExportPack())
+	d.Register("schema/reload", handleSchemaReload(server))
+}
+
+// schema/reload re-scans <vault>/.muninn/schemas/ (falling back to the
+// embedded generic pack) and replaces the active registry. Used by the
+// extension after installSchemaPack writes new YAML to disk.
+func handleSchemaReload(server *lsp.Server) rpc.Handler {
+	return func(_ context.Context, _ json.RawMessage) (any, *rpc.Error) {
+		registry, err := schema.Load(server.Vault().Root())
+		if err != nil {
+			return nil, &rpc.Error{Code: rpc.CodeSchema, Message: err.Error()}
+		}
+		server.SetSchemas(registry)
+		return map[string]any{"schemaCount": registry.Len()}, nil
+	}
 }
 
 func requireRegistry(server *lsp.Server) (*schema.Registry, *rpc.Error) {

@@ -1,0 +1,48 @@
+id: jha
+label: Job Hazard Analysis
+description: Task-by-task breakdown of hazards and controls before work begins.
+pattern: "ehs.jha.**"
+priority: 100
+
+frontmatter:
+  - key: title
+    type: string
+    required: true
+    description: Job or task being analyzed.
+  - key: date
+    type: date
+    required: true
+  - key: author
+    type: string
+    required: true
+  - key: location
+    type: string
+    required: false
+  - key: review_date
+    type: date
+    required: false
+    description: Next scheduled review.
+  - key: status
+    type: enum
+    required: false
+    vocabulary: [draft, approved, archived]
+
+template:
+  body: |
+    ## Scope
+
+    Describe the job, the people involved, and the equipment used.
+
+    ## Steps and hazards
+
+    | Step | Hazards | Controls |
+    | --- | --- | --- |
+    |  |  |  |
+
+    ## PPE required
+
+    ## Approvals
+  frontmatterDefaults:
+    date: "{{today}}"
+    author: "{{user}}"
+    status: draft

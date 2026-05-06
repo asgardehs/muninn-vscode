@@ -66,8 +66,15 @@ func TestPackList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(packs) == 0 || packs[0] != "generic" {
-		t.Errorf("packs=%v, expected at least generic first", packs)
+	wantPacks := map[string]bool{"generic": true, "ehs": true}
+	for _, p := range packs {
+		if !wantPacks[p] {
+			t.Errorf("unexpected pack %q in PackList result %v", p, packs)
+		}
+		delete(wantPacks, p)
+	}
+	for p := range wantPacks {
+		t.Errorf("expected pack %q in PackList result, got %v", p, packs)
 	}
 }
 
@@ -78,6 +85,29 @@ func TestPackFiles(t *testing.T) {
 	}
 	if _, ok := files["daily.yml"]; !ok {
 		t.Errorf("expected daily.yml in generic pack, got %v", keysOf(files))
+	}
+}
+
+func TestEhsPackParses(t *testing.T) {
+	files, err := PackFiles("ehs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"audit.yml", "incident.yml", "inspection.yml", "jha.yml", "training.yml"}
+	for _, name := range want {
+		body, ok := files[name]
+		if !ok {
+			t.Errorf("EHS pack missing %s", name)
+			continue
+		}
+		s, err := Parse(body)
+		if err != nil {
+			t.Errorf("parse %s: %v", name, err)
+			continue
+		}
+		if s.ID == "" || s.Pattern == "" {
+			t.Errorf("%s: id=%q pattern=%q", name, s.ID, s.Pattern)
+		}
 	}
 }
 
