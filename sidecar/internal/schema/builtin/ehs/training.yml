@@ -42,5 +42,4 @@ template:
     ## Outcomes / sign-off
   frontmatterDefaults:
     date: "{{today}}"
-    instructor: "{{user}}"
     status: scheduled
