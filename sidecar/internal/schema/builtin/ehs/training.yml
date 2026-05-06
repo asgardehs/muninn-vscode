@@ -12,8 +12,10 @@ frontmatter:
     type: date
     required: true
   - key: instructor
-    type: string
-    required: true
+    type: reference
+    target: 'people.**'
+    required: false
+    description: The instructor who conducted the training. References a note in the people hierarchy.
   - key: attendees
     type: string-array
     required: false
