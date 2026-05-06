@@ -1,25 +1,27 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/asgardehs/muninn-sidecar/internal/env"
+	"github.com/asgardehs/muninn-sidecar/internal/lsp"
 	"github.com/asgardehs/muninn-sidecar/internal/rpc"
 	"github.com/asgardehs/muninn-sidecar/internal/transport"
+	"github.com/asgardehs/muninn-sidecar/internal/vault"
 )
 
 const version = "0.0.1"
 
 func main() {
 	workspace := flag.String("workspace", "", "vault root path (defaults to current directory)")
+	useHeimdall := flag.Bool("use-heimdall", false, "consult Heimdall config for muninn.vault_path")
 	logLevel := flag.String("log-level", "info", "log level: error|warn|info|debug")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -38,17 +40,24 @@ func main() {
 	}
 
 	logger := log.New(os.Stderr, "[muninn-sidecar] ", log.LstdFlags|log.Lmicroseconds)
-	logger.Printf("starting v%s, workspace=%s, log-level=%s", version, *workspace, *logLevel)
+
+	vaultPath := env.Resolve(*workspace, *useHeimdall)
+	logger.Printf("starting v%s, workspace=%s, vault=%s, log-level=%s, heimdall=%v",
+		version, *workspace, vaultPath, *logLevel, *useHeimdall)
+
+	v := vault.New(vaultPath)
+	lspServer := lsp.New(v)
 
 	dispatcher := rpc.NewDispatcher(logger)
 	dispatcher.Register("rpc/ping", rpc.HandlePing(version))
 
-	writer := transport.NewFrameWriter(os.Stdout)
+	mux := transport.NewMux(os.Stdin, os.Stdout, logger)
 
-	if err := sendNotification(writer, "sidecar/ready", map[string]any{
+	if err := sendNotification(mux.Writer(), "sidecar/ready", map[string]any{
 		"version":      version,
-		"capabilities": []string{"lookup", "schema"},
-		"vaultPath":    *workspace,
+		"capabilities": []string{"lsp", "lookup", "schema"},
+		"vaultPath":    vaultPath,
+		"workspacePath": *workspace,
 	}); err != nil {
 		logger.Printf("failed to send sidecar/ready: %v", err)
 	}
@@ -67,51 +76,49 @@ func main() {
 		}
 	}()
 
-	if err := serve(ctx, os.Stdin, writer, dispatcher, logger); err != nil {
-		logger.Printf("serve exited with error: %v", err)
+	// LSP server runs on the multiplexed LSP channel.
+	lspStream := lsp.NewMuxStream(mux.LSP(), mux.Writer())
+	lspDone := make(chan error, 1)
+	go func() {
+		lspDone <- lspServer.ServeOn(ctx, lspStream)
+	}()
+
+	// RPC dispatcher consumes the RPC channel.
+	rpcDone := make(chan struct{})
+	go func() {
+		defer close(rpcDone)
+		for body := range mux.RPC() {
+			body := body
+			go func() {
+				respBytes, err := dispatcher.Dispatch(ctx, body)
+				if err != nil {
+					logger.Printf("rpc dispatch internal error: %v", err)
+					return
+				}
+				if respBytes == nil {
+					return
+				}
+				if err := mux.Writer().Write(&transport.Frame{
+					Channel: transport.ChannelRPC,
+					Body:    respBytes,
+				}); err != nil {
+					logger.Printf("rpc write response: %v", err)
+				}
+			}()
+		}
+	}()
+
+	// Run the multiplexer; returns on stdin EOF or ctx cancel.
+	if err := mux.Run(ctx); err != nil {
+		logger.Printf("mux exited with error: %v", err)
 		os.Exit(1)
 	}
+
+	cancel()
+	_ = lspStream.Close()
+	<-rpcDone
+	<-lspDone
 	logger.Printf("clean shutdown")
-}
-
-func serve(ctx context.Context, r io.Reader, w *transport.FrameWriter, d *rpc.Dispatcher, logger *log.Logger) error {
-	br := bufio.NewReader(r)
-	for {
-		if ctx.Err() != nil {
-			return nil
-		}
-		f, err := transport.ReadFrame(br)
-		if err == io.EOF {
-			logger.Printf("stdin EOF, exiting")
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("read frame: %w", err)
-		}
-
-		switch f.Channel {
-		case transport.ChannelRPC:
-			go handleRPC(ctx, f, w, d, logger)
-		case transport.ChannelLSP:
-			logger.Printf("lsp frame received but LSP server is not yet wired (Phase B); dropping %d bytes", len(f.Body))
-		default:
-			logger.Printf("unknown channel %q, dropping", f.Channel)
-		}
-	}
-}
-
-func handleRPC(ctx context.Context, f *transport.Frame, w *transport.FrameWriter, d *rpc.Dispatcher, logger *log.Logger) {
-	respBytes, err := d.Dispatch(ctx, f.Body)
-	if err != nil {
-		logger.Printf("dispatch internal error: %v", err)
-		return
-	}
-	if respBytes == nil {
-		return
-	}
-	if err := w.Write(&transport.Frame{Channel: transport.ChannelRPC, Body: respBytes}); err != nil {
-		logger.Printf("write response: %v", err)
-	}
 }
 
 func sendNotification(w *transport.FrameWriter, method string, params any) error {
