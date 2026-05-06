@@ -192,13 +192,12 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 				CodeActionKinds: []protocol.CodeActionKind{protocol.QuickFix},
 			},
 			// RenameProvider and ExecuteCommandProvider intentionally omitted.
-			// Rename ships in v0.2 (cross-vault refactor lives in the RPC channel,
-			// not in LSP rename). ExecuteCommand has no commands to advertise in
-			// v0.1 — createNote returns in Phase C as createFromHierarchy.
+			// Cross-vault rename lives in the RPC channel (vault/renameNote, v0.2),
+			// not in LSP rename. ExecuteCommand has no commands to advertise.
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "muninn",
-			Version: "0.1.0",
+			Version: "0.2.0",
 		},
 	}
 	return reply(ctx, result, nil)

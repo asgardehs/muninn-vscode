@@ -25,7 +25,7 @@ import (
 
 // version is the development fallback. Released binaries override this via
 // -ldflags "-X main.version=..." in scripts/build-sidecar.sh.
-var version = "0.1.0"
+var version = "0.2.0"
 
 func main() {
 	workspace := flag.String("workspace", "", "vault root path (defaults to current directory)")
