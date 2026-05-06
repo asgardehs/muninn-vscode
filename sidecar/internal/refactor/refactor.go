@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/asgardehs/muninn-sidecar/internal/refindex"
 	"github.com/asgardehs/muninn-sidecar/internal/vault"
 	"github.com/asgardehs/muninn-sidecar/internal/wikilink"
 )
@@ -122,6 +123,60 @@ func rollback(v *vault.Vault, written []FileEdit) {
 	for _, e := range written {
 		_ = v.WriteNote(e.Path, e.OldContent)
 	}
+}
+
+// BuildPlanWithRefs is BuildPlan plus reference-field rewrites. Use this in
+// production; BuildPlan exists for backwards-compatible callers and tests
+// that don't care about typed references.
+func BuildPlanWithRefs(v *vault.Vault, wikiIdx *wikilink.Index, refIdx *refindex.Index, oldName, newName string) (*Plan, error) {
+	plan, err := BuildPlan(v, wikiIdx, oldName, newName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Index FileEdits already produced by BuildPlan so we can merge
+	// reference-field rewrites into the same per-file edit when the file
+	// is both a wikilink source and a reference-field source.
+	editIdx := make(map[string]int, len(plan.FileEdits))
+	for i, e := range plan.FileEdits {
+		editIdx[e.Path] = i
+	}
+
+	for _, edge := range refIdx.RefsTo(oldName) {
+		if edge.SourceFile == plan.RenameFrom {
+			continue
+		}
+		var current string
+		if i, ok := editIdx[edge.SourceFile]; ok {
+			current = plan.FileEdits[i].NewContent
+		} else {
+			c, rerr := v.ReadNote(edge.SourceFile)
+			if rerr != nil {
+				return nil, fmt.Errorf("read reference source %q: %w", edge.SourceFile, rerr)
+			}
+			current = c
+		}
+
+		rewritten, ok := RewriteFrontmatterValue(current, edge.Field, oldName, newName)
+		if !ok {
+			// Index says there's an edge but frontmatter doesn't show it — skip
+			// rather than fail; the index will catch up via fsnotify next save.
+			continue
+		}
+
+		if i, ok := editIdx[edge.SourceFile]; ok {
+			plan.FileEdits[i].NewContent = rewritten
+			continue
+		}
+		original, _ := v.ReadNote(edge.SourceFile) // for rollback
+		plan.FileEdits = append(plan.FileEdits, FileEdit{
+			Path:       edge.SourceFile,
+			OldContent: original,
+			NewContent: rewritten,
+		})
+		editIdx[edge.SourceFile] = len(plan.FileEdits) - 1
+	}
+	return plan, nil
 }
 
 func validateHierarchyName(name string) error {

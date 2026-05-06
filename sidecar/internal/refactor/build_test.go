@@ -3,9 +3,11 @@ package refactor_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/asgardehs/muninn-sidecar/internal/refactor"
+	"github.com/asgardehs/muninn-sidecar/internal/refindex"
 	"github.com/asgardehs/muninn-sidecar/internal/vault"
 	"github.com/asgardehs/muninn-sidecar/internal/wikilink"
 )
@@ -67,4 +69,35 @@ func mustRead(t *testing.T, v *vault.Vault, p string) string {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func TestBuildPlan_RewritesReferenceFields(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "people.john-smith.md", "# John\n")
+	mustWrite(t, dir, "trainings.forklift.md",
+		"---\ntitle: Forklift\ninstructor: people.john-smith\n---\n\nbody\n")
+
+	v := vault.New(dir)
+	wikiIdx := wikilink.NewIndex()
+	refIdx := refindex.NewIndex()
+	// Pre-seed the refindex with the known edge — in production this is built
+	// by the lifecycle wiring (Task C3).
+	refIdx.Update("trainings.forklift.md", []refindex.ReferenceEdge{
+		{Field: "instructor", Target: "people.john-smith", SchemaID: "training"},
+	})
+
+	plan, err := refactor.BuildPlanWithRefs(v, wikiIdx, refIdx, "people.john-smith", "people.john-doe")
+	if err != nil {
+		t.Fatalf("BuildPlanWithRefs: %v", err)
+	}
+	if len(plan.FileEdits) != 1 {
+		t.Fatalf("expected 1 frontmatter edit, got %d", len(plan.FileEdits))
+	}
+	edit := plan.FileEdits[0]
+	if !strings.Contains(edit.NewContent, "instructor: people.john-doe") {
+		t.Errorf("frontmatter not rewritten:\n%s", edit.NewContent)
+	}
+	if strings.Contains(edit.NewContent, "instructor: people.john-smith") {
+		t.Errorf("old reference still present:\n%s", edit.NewContent)
+	}
 }
