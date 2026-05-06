@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -34,13 +35,17 @@ func validate(s *Schema) error {
 		}
 		switch f.Type {
 		case TypeString, TypeStringArray, TypeDate, TypeEnum,
-			TypeNumber, TypeBoolean, TypeNoteRef:
+			TypeNumber, TypeBoolean, TypeNoteRef, TypeReference:
 		default:
 			return fmt.Errorf("schema %q field %q has unknown type %q",
 				s.ID, f.Key, f.Type)
 		}
 		if f.Type == TypeEnum && len(f.Vocabulary) == 0 {
 			return fmt.Errorf("schema %q field %q is enum but has empty vocabulary",
+				s.ID, f.Key)
+		}
+		if f.Type == TypeReference && strings.TrimSpace(f.Target) == "" {
+			return fmt.Errorf("schema %q field %q is reference but has no target pattern",
 				s.ID, f.Key)
 		}
 	}
