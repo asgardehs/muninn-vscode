@@ -63,3 +63,25 @@ func (v *Vault) ReadNote(relPath string) (string, error) {
 	}
 	return string(data), nil
 }
+
+// NoteExists reports whether a note exists at the given vault-relative path.
+func (v *Vault) NoteExists(relPath string) bool {
+	_, err := os.Stat(filepath.Join(v.root, relPath))
+	return err == nil
+}
+
+// CreateNote writes content to a new note at relPath. It creates intermediate
+// directories as needed and refuses to overwrite an existing file.
+func (v *Vault) CreateNote(relPath, content string) error {
+	abs := filepath.Join(v.root, relPath)
+	if _, err := os.Stat(abs); err == nil {
+		return fmt.Errorf("note %q already exists", relPath)
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return fmt.Errorf("create parent dirs: %w", err)
+	}
+	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write note: %w", err)
+	}
+	return nil
+}

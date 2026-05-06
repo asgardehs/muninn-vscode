@@ -201,6 +201,11 @@ func (s *Server) buildLinkIndex() {
 	}
 }
 
+// BuildLinkIndex is the eager public entry point. The sidecar calls this at
+// startup so that RPC consumers (e.g., vault/getNote backlinks) see a populated
+// index even before an LSP client connects and triggers initialize.
+func (s *Server) BuildLinkIndex() { s.buildLinkIndex() }
+
 // --- Document sync ---
 
 func (s *Server) handleDidOpen(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {

@@ -48,9 +48,11 @@ func main() {
 
 	v := vault.New(vaultPath)
 	lspServer := lsp.New(v)
+	lspServer.BuildLinkIndex()
 
 	dispatcher := rpc.NewDispatcher(logger)
 	dispatcher.Register("rpc/ping", rpc.HandlePing(version))
+	registerVaultHandlers(dispatcher, lspServer)
 
 	mux := transport.NewMux(os.Stdin, os.Stdout, logger)
 
