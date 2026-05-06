@@ -2,8 +2,24 @@
   "name": "muninn",
   "displayName": "Muninn",
   "description": "Hierarchical notes for VS Code — fuzzy lookup, schema-driven creation, wikilinks.",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "asgardehs",
+  "keywords": [
+    "notes",
+    "knowledge base",
+    "wiki",
+    "wikilinks",
+    "markdown",
+    "pkm",
+    "second brain",
+    "hierarchical notes",
+    "dendron"
+  ],
+  "homepage": "https://github.com/asgardehs/muninn-vscode#readme",
+  "bugs": {
+    "url": "https://github.com/asgardehs/muninn-vscode/issues"
+  },
+  "qna": "https://github.com/asgardehs/muninn-vscode/discussions",
   "author": {
     "name": "Adam Bick",
     "email": "adam.bick86@gmail.com"

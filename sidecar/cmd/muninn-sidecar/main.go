@@ -19,7 +19,9 @@ import (
 	"github.com/asgardehs/muninn-sidecar/internal/wikilink"
 )
 
-const version = "0.0.1"
+// version is the development fallback. Released binaries override this via
+// -ldflags "-X main.version=..." in scripts/build-sidecar.sh.
+var version = "0.1.0"
 
 func main() {
 	workspace := flag.String("workspace", "", "vault root path (defaults to current directory)")

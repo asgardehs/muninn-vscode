@@ -2,30 +2,28 @@
 
 A hierarchical notes VS Code extension. Dot-path note names, fuzzy lookup, schema-driven creation, wikilinks with backlinks.
 
-Heavy lifting in a Go sidecar; thin TypeScript glue for VS Code.
+> Heavy lifting in a Go sidecar; thin TypeScript glue for VS Code. No database, no telemetry, plain markdown on disk.
 
-> **Status:** pre-release. v0.1 in development.
+## For users
 
-## Architecture
+The marketplace listing is the place to start: see [extension/README.md](extension/README.md). Or install directly from the VS Code Marketplace once v0.1.0 is published.
 
-- `sidecar/` — Go binary. Vault I/O, wikilink index, hierarchy tree, schema engine, LSP server, custom JSON-RPC server. One binary, two protocols on a single multiplexed stdio pipe.
-- `extension/` — VS Code extension (TypeScript). Spawns the sidecar, hosts UI commands and tree views, speaks both LSP (via `vscode-languageclient`) and the custom JSON-RPC channel.
-- `shared/` — example schema packs (`generic`, `ehs`) and note templates shipped with the extension.
+## For contributors
 
-## Development
+Setup, conventions, and how to land a change: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Requirements: Go 1.26+, Node 22+, VS Code 1.95+.
+Release cadence and the tag-driven publishing pipeline: [docs/standards/release.md](docs/standards/release.md).
 
-```sh
-# Build the sidecar
-cd sidecar && go build -o dist/muninn-sidecar ./cmd/muninn-sidecar
+Design specs: [docs/specs/](docs/specs/).
 
-# Compile the extension
-cd extension && npm install && npm run compile
+## Repository layout
 
-# Open the repo in VS Code, press F5 to launch the dev host.
-```
+- [`sidecar/`](sidecar/) — Go binary. Vault I/O, wikilink index, hierarchy tree, schema engine, LSP server, custom JSON-RPC server.
+- [`extension/`](extension/) — VS Code extension (TypeScript). Spawns the sidecar, hosts UI commands and tree views.
+- [`scripts/`](scripts/) — build + packaging.
+- [`Makefile`](Makefile) — task runner; canonical place to look up commands.
+- [`CHANGELOG.md`](CHANGELOG.md) — release notes per [Keep a Changelog](https://keepachangelog.com/).
 
 ## License
 
-GPL-3.0. See [LICENSE](LICENSE).
+[GPL-3.0](LICENSE).
