@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"go.lsp.dev/jsonrpc2"
@@ -36,8 +37,15 @@ func (s *Server) handleCompletion(ctx context.Context, reply jsonrpc2.Replier, r
 		return s.completeTag(ctx, reply, partial)
 	}
 
-	// Phase D will reintroduce schema-driven frontmatter value completion here,
-	// reading enum vocabularies from the schema engine instead of mdbase types.
+	// Schema-driven frontmatter enum completion: when the cursor sits after
+	// "key: " inside a frontmatter block, offer the matching schema's
+	// vocabulary. Schemas live on the server; absence means no schemas
+	// loaded → no completion.
+	if s.schemas != nil {
+		if fieldName, partial, ok := isFrontmatterValueContext(text, params.Position); ok {
+			return s.completeFrontmatterValue(ctx, reply, params.TextDocument.URI, fieldName, partial)
+		}
+	}
 
 	// Only complete inside [[ context.
 	if !isWikilinkContext(text, params.Position) {
@@ -307,6 +315,89 @@ func (s *Server) completeCallout(ctx context.Context, reply jsonrpc2.Replier, pa
 }
 
 // wikilinkPartial returns the text typed so far inside [[ ... cursor.
+// isFrontmatterValueContext reports whether the cursor is positioned after
+// "key: " on a line inside the frontmatter block, returning the field name
+// and the partially-typed value. Returns ok=false outside frontmatter or
+// when the cursor isn't past a colon on a key:value line.
+func isFrontmatterValueContext(text string, pos protocol.Position) (fieldName, partial string, ok bool) {
+	lines := strings.Split(text, "\n")
+	if int(pos.Line) >= len(lines) {
+		return "", "", false
+	}
+	// Cursor must be strictly between the opening and closing --- delimiters.
+	fmStart, fmEnd := -1, -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "---" {
+			if fmStart == -1 {
+				fmStart = i
+			} else {
+				fmEnd = i
+				break
+			}
+		}
+	}
+	if fmStart == -1 || fmEnd == -1 {
+		return "", "", false
+	}
+	if int(pos.Line) <= fmStart || int(pos.Line) >= fmEnd {
+		return "", "", false
+	}
+
+	line := lines[pos.Line]
+	colon := strings.Index(line, ":")
+	if colon < 0 {
+		return "", "", false
+	}
+	fieldName = strings.TrimSpace(line[:colon])
+	if fieldName == "" {
+		return "", "", false
+	}
+	valueStart := colon + 1
+	if valueStart < len(line) && line[valueStart] == ' ' {
+		valueStart++
+	}
+	if int(pos.Character) < valueStart {
+		return "", "", false
+	}
+	if int(pos.Character) > len(line) {
+		return "", "", false
+	}
+	partial = strings.TrimSpace(line[valueStart:int(pos.Character)])
+	return fieldName, partial, true
+}
+
+// completeFrontmatterValue offers enum completions for the given field by
+// consulting the schema registry for schemas applicable to the current note.
+func (s *Server) completeFrontmatterValue(
+	ctx context.Context,
+	reply jsonrpc2.Replier,
+	docURI protocol.DocumentURI,
+	fieldName, partial string,
+) error {
+	noteName := strings.TrimSuffix(filepath.Base(s.uriToRelPath(docURI)), ".md")
+	values := s.schemas.EnumValuesFor(noteName, fieldName)
+	if len(values) == 0 {
+		return reply(ctx, nil, nil)
+	}
+
+	lowerPartial := strings.ToLower(partial)
+	items := make([]protocol.CompletionItem, 0, len(values))
+	for _, v := range values {
+		if lowerPartial != "" && !strings.Contains(strings.ToLower(v), lowerPartial) {
+			continue
+		}
+		items = append(items, protocol.CompletionItem{
+			Label:  v,
+			Kind:   protocol.CompletionItemKindEnumMember,
+			Detail: fmt.Sprintf("%s value", fieldName),
+		})
+	}
+	return reply(ctx, &protocol.CompletionList{
+		IsIncomplete: false,
+		Items:        items,
+	}, nil)
+}
+
 func wikilinkPartial(text string, pos protocol.Position) string {
 	lines := strings.Split(text, "\n")
 	if int(pos.Line) >= len(lines) {
