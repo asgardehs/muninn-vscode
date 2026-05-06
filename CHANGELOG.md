@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 (no unreleased changes)
 
+## [0.1.1] - 2026-05-06
+
+### Fixed
+
+- Extension activation failed with `Cannot find module
+  'vscode-languageclient/node'` because the runtime dependency was
+  excluded from the packaged `.vsix`. The extension now bundles its
+  TypeScript sources and runtime dependencies into a single
+  `out/extension.js` via esbuild, so no `node_modules/` is required at
+  install time.
+
 ## [0.1.0] - 2026-05-06
 
 First public release. Establishes the v0.1 feature surface described in

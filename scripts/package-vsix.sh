@@ -48,6 +48,7 @@ out_dir="$repo_root/dist/vsix"
 mkdir -p "$out_dir"
 
 cd "$repo_root/extension"
+npm run typecheck
 npm run compile
 
 version="$(node -p "require('./package.json').version")"
