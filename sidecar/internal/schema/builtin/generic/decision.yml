@@ -1,0 +1,31 @@
+id: decision
+label: Decision Record
+description: An architecture or product decision with status and consequences.
+pattern: "decisions.**"
+priority: 50
+
+frontmatter:
+  - key: title
+    type: string
+    required: true
+  - key: date
+    type: date
+    required: true
+  - key: status
+    type: enum
+    required: true
+    vocabulary: [proposed, accepted, deprecated, superseded]
+  - key: deciders
+    type: string-array
+    required: false
+
+template:
+  body: |
+    ## Context
+
+    ## Decision
+
+    ## Consequences
+  frontmatterDefaults:
+    date: "{{today}}"
+    status: proposed

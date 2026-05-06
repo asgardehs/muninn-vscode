@@ -1,0 +1,27 @@
+id: meeting
+label: Meeting
+description: A meeting note with attendees and agenda.
+pattern: "meetings.**"
+priority: 50
+
+frontmatter:
+  - key: title
+    type: string
+    required: true
+  - key: date
+    type: date
+    required: true
+  - key: attendees
+    type: string-array
+    required: false
+
+template:
+  body: |
+    ## Agenda
+
+    ## Discussion
+
+    ## Action items
+    - [ ]
+  frontmatterDefaults:
+    date: "{{today}}"

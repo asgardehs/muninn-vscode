@@ -1,0 +1,26 @@
+id: til
+label: Today I Learned
+description: A short note capturing something just learned.
+pattern: "til.**"
+priority: 50
+
+frontmatter:
+  - key: title
+    type: string
+    required: true
+  - key: date
+    type: date
+    required: true
+  - key: tags
+    type: string-array
+    required: false
+
+template:
+  body: |
+    ## What
+
+    ## Why it matters
+  frontmatterDefaults:
+    date: "{{today}}"
+    tags:
+      - til

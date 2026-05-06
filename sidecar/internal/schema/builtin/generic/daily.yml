@@ -1,0 +1,29 @@
+id: daily
+label: Daily Note
+description: A note for a specific calendar day.
+pattern: "daily.*"
+priority: 50
+
+frontmatter:
+  - key: title
+    type: string
+    required: true
+  - key: date
+    type: date
+    required: true
+  - key: tags
+    type: string-array
+    required: false
+
+template:
+  body: |
+    ## What I did
+
+    ## Notes
+
+    ## Tomorrow
+  frontmatterDefaults:
+    title: "{{name}}"
+    date: "{{today}}"
+    tags:
+      - daily

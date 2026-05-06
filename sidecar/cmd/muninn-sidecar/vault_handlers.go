@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/sahilm/fuzzy"
+	"gopkg.in/yaml.v3"
 
 	"github.com/asgardehs/muninn-sidecar/internal/hierarchy"
 	"github.com/asgardehs/muninn-sidecar/internal/lsp"
 	"github.com/asgardehs/muninn-sidecar/internal/markdown"
 	"github.com/asgardehs/muninn-sidecar/internal/rpc"
+	"github.com/asgardehs/muninn-sidecar/internal/schema"
 	"github.com/asgardehs/muninn-sidecar/internal/vault"
 	"github.com/asgardehs/muninn-sidecar/internal/wikilink"
 )
@@ -259,8 +262,10 @@ func handleGetNote(server *lsp.Server) rpc.Handler {
 // --- vault/createFromHierarchy ---
 
 type createFromHierarchyParams struct {
-	Name             string `json:"name"`
-	OpenAfterCreate  bool   `json:"openAfterCreate"`
+	Name            string         `json:"name"`
+	SchemaID        string         `json:"schemaId"`
+	Frontmatter     map[string]any `json:"frontmatter"`
+	OpenAfterCreate bool           `json:"openAfterCreate"`
 }
 
 func handleCreateFromHierarchy(server *lsp.Server) rpc.Handler {
@@ -278,21 +283,157 @@ func handleCreateFromHierarchy(server *lsp.Server) rpc.Handler {
 			return nil, &rpc.Error{Code: rpc.CodeVault, Message: fmt.Sprintf("note %q already exists", p.Name)}
 		}
 
-		// v0.1 minimal template: title-only frontmatter + heading.
-		// Phase D's schema engine will reintroduce richer templates.
-		title := titleFromHierarchy(p.Name)
-		body := fmt.Sprintf("---\ntitle: %s\n---\n\n# %s\n\n", title, title)
+		body, schemaID, rerr := renderNote(server, p)
+		if rerr != nil {
+			return nil, rerr
+		}
 		if err := v.CreateNote(relPath, body); err != nil {
 			return nil, vaultErr(err)
 		}
-		return map[string]any{
+		out := map[string]any{
 			"name":            p.Name,
 			"path":            relPath,
 			"absPath":         v.AbsPath(relPath),
 			"created":         true,
 			"openAfterCreate": p.OpenAfterCreate,
-		}, nil
+		}
+		if schemaID != "" {
+			out["schemaId"] = schemaID
+		}
+		return out, nil
 	}
+}
+
+// renderNote builds the file body for createFromHierarchy. When a schema
+// applies (explicit p.SchemaID, or the highest-priority match if none was
+// passed), its template body and frontmatter defaults drive the output.
+// Without a schema we fall back to the v0.1 minimal title-only frontmatter.
+func renderNote(server *lsp.Server, p createFromHierarchyParams) (string, string, *rpc.Error) {
+	title := titleFromHierarchy(p.Name)
+	registry := server.Schemas()
+
+	var s *schema.Schema
+	if registry != nil {
+		if p.SchemaID != "" {
+			s = registry.Get(p.SchemaID)
+			if s == nil {
+				return "", "", &rpc.Error{Code: rpc.CodeNotFound, Message: fmt.Sprintf("schema %q not found", p.SchemaID)}
+			}
+		} else if matches := registry.ApplicableTo(p.Name); len(matches) > 0 {
+			s = matches[0]
+		}
+	}
+
+	if s == nil {
+		body := fmt.Sprintf("---\ntitle: %s\n---\n\n# %s\n\n", title, title)
+		return body, "", nil
+	}
+
+	vars := schemaTemplateVars(p.Name)
+	fm, ferr := buildFrontmatter(s, p.Frontmatter, title, vars)
+	if ferr != nil {
+		return "", "", &rpc.Error{Code: rpc.CodeSchema, Message: ferr.Error()}
+	}
+	bodyTmpl := s.Template.Body
+	if bodyTmpl == "" {
+		bodyTmpl = "# {{name}}\n\n"
+	}
+	body, terr := schema.Render(bodyTmpl, vars)
+	if terr != nil {
+		return "", "", &rpc.Error{Code: rpc.CodeSchema, Message: terr.Error()}
+	}
+	header, herr := renderFrontmatterYAML(s, fm)
+	if herr != nil {
+		return "", "", &rpc.Error{Code: rpc.CodeSchema, Message: herr.Error()}
+	}
+	return header + "\n" + body, s.ID, nil
+}
+
+// buildFrontmatter merges (in increasing precedence) schema defaults, a
+// title fallback, and any caller-supplied overrides; template strings inside
+// defaults are expanded.
+func buildFrontmatter(s *schema.Schema, override map[string]any, fallbackTitle string, vars schema.TemplateVars) (map[string]any, error) {
+	fm := make(map[string]any)
+	for k, v := range s.Template.FrontmatterDefaults {
+		expanded, err := expandTemplateValue(v, vars)
+		if err != nil {
+			return nil, fmt.Errorf("default %q: %w", k, err)
+		}
+		fm[k] = expanded
+	}
+	if _, hasTitle := fm["title"]; !hasTitle {
+		if s.FieldByKey("title") != nil {
+			fm["title"] = fallbackTitle
+		}
+	}
+	for k, v := range override {
+		fm[k] = v
+	}
+	return fm, nil
+}
+
+// expandTemplateValue recursively expands template strings inside arbitrary
+// frontmatter default values (strings, arrays of strings, nested maps).
+func expandTemplateValue(v any, vars schema.TemplateVars) (any, error) {
+	switch x := v.(type) {
+	case string:
+		return schema.Render(x, vars)
+	case []any:
+		out := make([]any, len(x))
+		for i, item := range x {
+			expanded, err := expandTemplateValue(item, vars)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = expanded
+		}
+		return out, nil
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, item := range x {
+			expanded, err := expandTemplateValue(item, vars)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = expanded
+		}
+		return out, nil
+	default:
+		return v, nil
+	}
+}
+
+// renderFrontmatterYAML produces a YAML frontmatter block for fm, ordering
+// schema-declared fields in declaration order and appending any extras
+// alphabetically. Wraps the document in --- delimiters.
+func renderFrontmatterYAML(s *schema.Schema, fm map[string]any) (string, error) {
+	ordered := make([]string, 0, len(fm))
+	written := make(map[string]bool, len(fm))
+	for _, f := range s.Frontmatter {
+		if _, ok := fm[f.Key]; ok {
+			ordered = append(ordered, f.Key)
+			written[f.Key] = true
+		}
+	}
+	extras := make([]string, 0)
+	for k := range fm {
+		if !written[k] {
+			extras = append(extras, k)
+		}
+	}
+	sort.Strings(extras)
+	ordered = append(ordered, extras...)
+
+	out := "---\n"
+	for _, k := range ordered {
+		raw, err := yaml.Marshal(map[string]any{k: fm[k]})
+		if err != nil {
+			return "", err
+		}
+		out += string(raw)
+	}
+	out += "---\n"
+	return out, nil
 }
 
 // titleFromHierarchy converts "projects.alpha.kickoff" into "Kickoff".

@@ -13,6 +13,7 @@ import (
 	"github.com/asgardehs/muninn-sidecar/internal/env"
 	"github.com/asgardehs/muninn-sidecar/internal/lsp"
 	"github.com/asgardehs/muninn-sidecar/internal/rpc"
+	"github.com/asgardehs/muninn-sidecar/internal/schema"
 	"github.com/asgardehs/muninn-sidecar/internal/transport"
 	"github.com/asgardehs/muninn-sidecar/internal/vault"
 	"github.com/asgardehs/muninn-sidecar/internal/wikilink"
@@ -50,9 +51,18 @@ func main() {
 	lspServer := lsp.New(v)
 	lspServer.BuildLinkIndex()
 
+	schemas, err := schema.Load(vaultPath)
+	if err != nil {
+		logger.Printf("schema load failed (continuing without schemas): %v", err)
+	} else {
+		lspServer.SetSchemas(schemas)
+		logger.Printf("loaded %d schemas", schemas.Len())
+	}
+
 	dispatcher := rpc.NewDispatcher(logger)
 	dispatcher.Register("rpc/ping", rpc.HandlePing(version))
 	registerVaultHandlers(dispatcher, lspServer)
+	registerSchemaHandlers(dispatcher, lspServer)
 
 	mux := transport.NewMux(os.Stdin, os.Stdout, logger)
 

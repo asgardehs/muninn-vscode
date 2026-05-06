@@ -1,0 +1,28 @@
+id: reference
+label: Reference
+description: A note about an external resource (book, paper, link).
+pattern: "references.**"
+priority: 50
+
+frontmatter:
+  - key: title
+    type: string
+    required: true
+  - key: url
+    type: string
+    required: false
+  - key: author
+    type: string
+    required: false
+  - key: tags
+    type: string-array
+    required: false
+
+template:
+  body: |
+    ## Summary
+
+    ## Key takeaways
+
+    ## Quotes
+  frontmatterDefaults: {}

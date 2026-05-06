@@ -13,6 +13,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/asgardehs/muninn-sidecar/internal/markdown"
+	"github.com/asgardehs/muninn-sidecar/internal/schema"
 	"github.com/asgardehs/muninn-sidecar/internal/vault"
 	"github.com/asgardehs/muninn-sidecar/internal/wikilink"
 )
@@ -34,8 +35,9 @@ func configEnabled(b *bool) bool {
 
 // Server is the Muninn LSP server.
 type Server struct {
-	vault *vault.Vault
-	conn  jsonrpc2.Conn
+	vault   *vault.Vault
+	schemas *schema.Registry
+	conn    jsonrpc2.Conn
 
 	config muninnConfig
 
@@ -61,6 +63,16 @@ func (s *Server) LinkIndex() *wikilink.Index { return s.linkIdx }
 // Vault exposes the underlying vault for sidecar coordination (e.g., the
 // fsnotify watcher needs to read changed files to update the index).
 func (s *Server) Vault() *vault.Vault { return s.vault }
+
+// Schemas returns the schema registry, or nil if none has been set. RPC and
+// LSP handlers should nil-check before use; absence means no schemas were
+// loaded (vault has no .muninn/schemas/ and embedded fallback failed).
+func (s *Server) Schemas() *schema.Registry { return s.schemas }
+
+// SetSchemas attaches a schema registry. Called at sidecar startup once the
+// registry is loaded; safe to call again to swap registries when the user
+// reloads schemas.
+func (s *Server) SetSchemas(r *schema.Registry) { s.schemas = r }
 
 // RefreshOpenDiagnostics resends diagnostics for every currently-open
 // document. The sidecar's filesystem watcher calls this after the wikilink
