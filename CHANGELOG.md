@@ -69,9 +69,10 @@ First public release. Establishes the v0.1 feature surface described in
 
 - VS Code 1.95+ required.
 - Distributed via the [Open VSX Registry](https://open-vsx.org/) under
-  the `asgardehs` namespace. VSCodium, Cursor, Theia, Gitpod, and
-  code-server install directly. Stock VS Code users sideload the
-  matching `.vsix` from the GitHub Release.
+  the `pharomwinters` namespace (the maintainer's Eclipse Foundation
+  identity). VSCodium, Cursor, Theia, Gitpod, and code-server install
+  directly. Stock VS Code users sideload the matching `.vsix` from the
+  GitHub Release.
 - Platform-targeted `.vsix` for linux-x64, linux-arm64, darwin-x64,
   darwin-arm64, and win32-x64. CGO is disabled in builds — the
   sidecar binary is fully static.

@@ -2,11 +2,11 @@ name: Release
 
 # Triggered when a v*.*.* tag is pushed. Cross-compiles the sidecar for five
 # platforms, builds one platform-targeted .vsix per platform, publishes each
-# to the Open VSX Registry under the asgardehs namespace, and attaches the
-# .vsix files to a matching GitHub Release.
+# to the Open VSX Registry under the pharomwinters namespace, and attaches
+# the .vsix files to a matching GitHub Release.
 #
 # Required secrets:
-#   VSX_PAT  — Open VSX Personal Access Token for the asgardehs namespace.
+#   VSX_PAT  — Open VSX Personal Access Token for the pharomwinters namespace.
 #              Documented in docs/standards/release.md. Org-level secrets
 #              under the asgardehs org are inherited by this repo, so you
 #              don't need to add it again per-repo.
