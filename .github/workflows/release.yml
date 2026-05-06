@@ -2,13 +2,14 @@ name: Release
 
 # Triggered when a v*.*.* tag is pushed. Cross-compiles the sidecar for five
 # platforms, builds one platform-targeted .vsix per platform, publishes each
-# to the VS Code Marketplace under the asgardehs publisher, and attaches the
+# to the Open VSX Registry under the asgardehs namespace, and attaches the
 # .vsix files to a matching GitHub Release.
 #
-# Required repo secrets:
-#   VSCE_PAT  — Azure DevOps Personal Access Token with Marketplace
-#               (Manage) scope for the asgardehs publisher. Documented in
-#               docs/standards/release.md.
+# Required secrets:
+#   VSX_PAT  — Open VSX Personal Access Token for the asgardehs namespace.
+#              Documented in docs/standards/release.md. Org-level secrets
+#              under the asgardehs org are inherited by this repo, so you
+#              don't need to add it again per-repo.
 #
 # A pushed tag that fails publish leaves a partial GitHub Release behind;
 # delete it (gh release delete <tag>) before re-tagging.
@@ -74,7 +75,7 @@ jobs:
           retention-days: 7
 
   publish:
-    name: Publish to Marketplace + GitHub Release
+    name: Publish to Open VSX + GitHub Release
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -95,20 +96,17 @@ jobs:
       - name: List artifacts
         run: ls -lh dist/vsix/
 
-      - name: Publish to VS Code Marketplace
+      - name: Publish to Open VSX Registry
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.VSX_PAT }}
         run: |
-          if [[ -z "$VSCE_PAT" ]]; then
-            echo "::error::VSCE_PAT secret is unset; cannot publish."
+          if [[ -z "$OVSX_PAT" ]]; then
+            echo "::error::VSX_PAT secret is unset; cannot publish."
             exit 1
           fi
-          cd "$GITHUB_WORKSPACE/extension"
           for vsix in "$GITHUB_WORKSPACE"/dist/vsix/*.vsix; do
             echo "::group::publish $(basename "$vsix")"
-            npx --yes @vscode/vsce publish \
-              --packagePath "$vsix" \
-              --pat "$VSCE_PAT"
+            npx --yes ovsx publish "$vsix"
             echo "::endgroup::"
           done
 

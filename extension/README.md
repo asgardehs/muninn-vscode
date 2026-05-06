@@ -117,6 +117,16 @@ Muninn is part of the Asgard EHS ecosystem. The architecture is inspired by [Den
 
 [GPL-3.0](LICENSE).
 
+## Installing
+
+- **VSCodium / Cursor / Theia / Gitpod / code-server**: install directly
+  from the [Open VSX Registry](https://open-vsx.org/extension/asgardehs/muninn).
+- **Stock VS Code**: download the matching `muninn-<platform>-<version>.vsix`
+  from the [GitHub Releases page](https://github.com/asgardehs/muninn-vscode/releases)
+  and run `code --install-extension <path>`.
+
+We do not currently publish to the Microsoft VS Code Marketplace.
+
 ## Source
 
 [github.com/asgardehs/muninn-vscode](https://github.com/asgardehs/muninn-vscode)

@@ -6,7 +6,7 @@ A hierarchical notes VS Code extension. Dot-path note names, fuzzy lookup, schem
 
 ## For users
 
-The marketplace listing is the place to start: see [extension/README.md](extension/README.md). Or install directly from the VS Code Marketplace once v0.1.0 is published.
+The full feature tour lives in [extension/README.md](extension/README.md). Once v0.1.0 ships you can install Muninn from the [Open VSX Registry](https://open-vsx.org/extension/asgardehs/muninn) (VSCodium, Cursor, Theia, Gitpod, code-server) or sideload a `.vsix` from the [GitHub Releases](https://github.com/asgardehs/muninn-vscode/releases) page on stock VS Code.
 
 ## For contributors
 
