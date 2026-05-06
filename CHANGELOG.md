@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 (no unreleased changes)
 
+## [0.2.0] - 2026-05-06
+
+### Added
+
+- **`type: reference` schema field.** Frontmatter fields can now declare
+  `type: reference` with an optional `target:` glob (e.g. `target: 'people.**'`).
+  The schema engine validates that the field value resolves to a note matching the
+  target pattern and surfaces a `reference-target-mismatch` diagnostic when it
+  does not. The older `type: note-ref` spelling still works; `reference` is now
+  the canonical name and `note-ref` is legacy.
+- **`Muninn: Rename Note` command.** Renames the active note's file, updates all
+  wikilinks that target it across the vault, and rewrites any `reference`
+  frontmatter fields pointing to it. Rename is atomic on the LSP side; the
+  extension applies the workspace edit in a single transaction.
+
+### Internal
+
+- `refactor` package: logic for rewriting wikilinks and reference-field values
+  during a rename operation.
+- `refindex` package: index of all reference-typed field values keyed by target
+  note path, used to find fields that need rewriting on rename without a full
+  vault scan.
+
+### Migration notes
+
+**EHS training schema — `instructor` field.** The bundled `ehs/training` schema
+changed `instructor` from `type: string, required: true` to
+`type: reference, target: 'people.**', required: false`. Existing training notes
+with `instructor: "Bob Smith"` (a plain name string) will now show a
+`reference-target-mismatch` diagnostic. To clear it, migrate the value to a
+dot-path that matches the `people.**` pattern (e.g. `instructor: people.bob-smith`)
+and create the corresponding note under your vault's `people/` hierarchy. The
+field is no longer required, so removing it is also valid if you do not use the
+`people.*` hierarchy.
+
+All other schema changes in this release are additive and backwards-compatible.
+
 ## [0.1.1] - 2026-05-06
 
 ### Fixed

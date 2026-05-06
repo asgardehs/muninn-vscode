@@ -17,7 +17,8 @@ const (
 	TypeEnum        FieldType = "enum"
 	TypeNumber      FieldType = "number"
 	TypeBoolean     FieldType = "boolean"
-	TypeNoteRef     FieldType = "note-ref"
+	TypeNoteRef     FieldType = "note-ref"  // legacy, accepted for backwards compat
+	TypeReference   FieldType = "reference" // typed reference; requires Target
 )
 
 // Field describes one frontmatter field a schema requires or permits.
@@ -27,6 +28,7 @@ type Field struct {
 	Required    bool      `yaml:"required"`
 	Vocabulary  []string  `yaml:"vocabulary"`
 	Description string    `yaml:"description"`
+	Target      string    `yaml:"target"` // glob-over-dot-path; required for TypeReference
 }
 
 // ChildConstraint declares that a child note matching Pattern must conform to

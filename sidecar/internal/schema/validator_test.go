@@ -105,3 +105,57 @@ func TestValidateNoteRef(t *testing.T) {
 		t.Errorf("expected note-ref-unresolved, got %+v", v)
 	}
 }
+
+func TestValidate_ReferenceMatchesTargetPattern(t *testing.T) {
+	s := &Schema{
+		ID:      "t",
+		Pattern: "trainings.*",
+		Frontmatter: []Field{
+			{Key: "instructor", Type: TypeReference, Target: "people.**", Required: true},
+		},
+	}
+	resolver := fakeRefs{exists: map[string]bool{"people.john-smith": true}}
+
+	v := Validate(s, map[string]any{"instructor": "people.john-smith"}, resolver)
+	if len(v) != 0 {
+		t.Errorf("expected no violations, got %v", v)
+	}
+}
+
+func TestValidate_ReferenceFailsTargetPattern(t *testing.T) {
+	s := &Schema{
+		ID:      "t",
+		Pattern: "trainings.*",
+		Frontmatter: []Field{
+			{Key: "instructor", Type: TypeReference, Target: "people.**", Required: true},
+		},
+	}
+	resolver := fakeRefs{exists: map[string]bool{"places.boston": true}}
+
+	v := Validate(s, map[string]any{"instructor": "places.boston"}, resolver)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation, got %d: %v", len(v), v)
+	}
+	if v[0].Code != "reference-target-mismatch" {
+		t.Errorf("code = %q, want reference-target-mismatch", v[0].Code)
+	}
+}
+
+func TestValidate_ReferenceUnresolved(t *testing.T) {
+	s := &Schema{
+		ID:      "t",
+		Pattern: "trainings.*",
+		Frontmatter: []Field{
+			{Key: "instructor", Type: TypeReference, Target: "people.**"},
+		},
+	}
+	resolver := fakeRefs{exists: map[string]bool{}}
+
+	v := Validate(s, map[string]any{"instructor": "people.who"}, resolver)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation, got %d", len(v))
+	}
+	if v[0].Code != "reference-unresolved" {
+		t.Errorf("code = %q, want reference-unresolved", v[0].Code)
+	}
+}

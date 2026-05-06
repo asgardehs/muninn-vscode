@@ -125,6 +125,27 @@ func validateField(f *Field, val any, refs NoteRefResolver) *Violation {
 				Message:  fmt.Sprintf("note-ref %q does not resolve to any note", s),
 			}
 		}
+	case TypeReference:
+		s, ok := val.(string)
+		if !ok {
+			return typeError(f, val, "reference dot-path string")
+		}
+		if f.Target != "" && !MatchPattern(f.Target, s) {
+			return &Violation{
+				Field:    f.Key,
+				Code:     "reference-target-mismatch",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("%s = %q does not match target pattern %q", f.Key, s, f.Target),
+			}
+		}
+		if refs != nil && !refs.NoteExists(s) {
+			return &Violation{
+				Field:    f.Key,
+				Code:     "reference-unresolved",
+				Severity: SeverityWarning,
+				Message:  fmt.Sprintf("reference %q does not resolve to any note", s),
+			}
+		}
 	}
 	return nil
 }

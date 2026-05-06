@@ -14,6 +14,8 @@ import (
 	"github.com/asgardehs/muninn-sidecar/internal/hierarchy"
 	"github.com/asgardehs/muninn-sidecar/internal/lsp"
 	"github.com/asgardehs/muninn-sidecar/internal/markdown"
+	"github.com/asgardehs/muninn-sidecar/internal/refactor"
+	"github.com/asgardehs/muninn-sidecar/internal/refindex"
 	"github.com/asgardehs/muninn-sidecar/internal/rpc"
 	"github.com/asgardehs/muninn-sidecar/internal/schema"
 	"github.com/asgardehs/muninn-sidecar/internal/vault"
@@ -32,6 +34,7 @@ func registerVaultHandlers(d *rpc.Dispatcher, server *lsp.Server) {
 	d.Register("vault/getNote", handleGetNote(server))
 	d.Register("vault/createFromHierarchy", handleCreateFromHierarchy(server))
 	d.Register("vault/refresh", handleRefresh(server))
+	d.Register("vault/renameNote", handleRenameNote(server))
 }
 
 // --- shared helpers ---
@@ -465,14 +468,93 @@ func handleRefresh(server *lsp.Server) rpc.Handler {
 		if err != nil {
 			return nil, vaultErr(err)
 		}
-		idx := server.LinkIndex()
+		linkIdx := server.LinkIndex()
+		refIdx := server.RefIndex()
+		registry := server.Schemas()
 		for _, f := range notes {
 			content, err := server.Vault().ReadNote(f)
 			if err != nil {
 				continue
 			}
-			idx.Update(f, wikilink.Extract(content))
+			linkIdx.Update(f, wikilink.Extract(content))
+
+			parsed := markdown.NewParser().Parse(content)
+			fmEntries := markdown.ParseFrontmatter(parsed.Frontmatter)
+			fmMap := make(map[string]any, len(fmEntries))
+			for _, e := range fmEntries {
+				fmMap[e.Key] = e.Value
+			}
+			noteName := strings.TrimSuffix(f, ".md")
+			var sch *schema.Schema
+			if registry != nil {
+				if matches := registry.ApplicableTo(noteName); len(matches) > 0 {
+					sch = matches[0]
+				}
+			}
+			refIdx.Update(f, refindex.ExtractEdges(sch, fmMap))
 		}
 		return map[string]any{"noteCount": len(notes)}, nil
+	}
+}
+
+// --- vault/renameNote ---
+
+type renameNoteParams struct {
+	OldName string `json:"oldName"`
+	NewName string `json:"newName"`
+}
+
+func handleRenameNote(server *lsp.Server) rpc.Handler {
+	return func(_ context.Context, params json.RawMessage) (any, *rpc.Error) {
+		var p renameNoteParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &rpc.Error{Code: rpc.CodeInvalidParams, Message: err.Error()}
+		}
+
+		v := server.Vault()
+		idx := server.LinkIndex()
+		refIdx := server.RefIndex()
+		registry := server.Schemas()
+
+		plan, err := refactor.BuildPlanWithRefs(v, idx, refIdx, p.OldName, p.NewName)
+		if err != nil {
+			return nil, &rpc.Error{Code: rpc.CodeVault, Message: err.Error()}
+		}
+		if err := refactor.Apply(v, plan); err != nil {
+			return nil, &rpc.Error{Code: rpc.CodeVault, Message: err.Error()}
+		}
+
+		// Force both indexes to catch up immediately so the caller's next query
+		// reflects the rename without waiting for fsnotify.
+		notes, _ := v.ListNotes()
+		for _, f := range notes {
+			content, err := v.ReadNote(f)
+			if err != nil {
+				continue
+			}
+			idx.Update(f, wikilink.Extract(content))
+
+			parsed := markdown.NewParser().Parse(content)
+			fmEntries := markdown.ParseFrontmatter(parsed.Frontmatter)
+			fmMap := make(map[string]any, len(fmEntries))
+			for _, e := range fmEntries {
+				fmMap[e.Key] = e.Value
+			}
+			noteName := strings.TrimSuffix(f, ".md")
+			var sch *schema.Schema
+			if registry != nil {
+				if matches := registry.ApplicableTo(noteName); len(matches) > 0 {
+					sch = matches[0]
+				}
+			}
+			refIdx.Update(f, refindex.ExtractEdges(sch, fmMap))
+		}
+
+		return map[string]any{
+			"oldName":     plan.OldName,
+			"newName":     plan.NewName,
+			"renamedFile": plan.RenameTo,
+			"editedFiles": len(plan.FileEdits),
+		}, nil
 	}
 }

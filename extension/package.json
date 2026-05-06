@@ -2,7 +2,7 @@
   "name": "muninn",
   "displayName": "Muninn",
   "description": "Hierarchical notes for VS Code — fuzzy lookup, schema-driven creation, wikilinks.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "pharomwinters",
   "keywords": [
     "notes",
@@ -69,6 +69,10 @@
       {
         "command": "muninn.showSidecarLogs",
         "title": "Muninn: Show Sidecar Logs"
+      },
+      {
+        "command": "muninn.renameNote",
+        "title": "Muninn: Rename Note (refactor wikilinks)"
       }
     ],
     "keybindings": [

@@ -13,6 +13,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/asgardehs/muninn-sidecar/internal/markdown"
+	"github.com/asgardehs/muninn-sidecar/internal/refindex"
 	"github.com/asgardehs/muninn-sidecar/internal/schema"
 	"github.com/asgardehs/muninn-sidecar/internal/vault"
 	"github.com/asgardehs/muninn-sidecar/internal/wikilink"
@@ -44,7 +45,8 @@ type Server struct {
 	mu   sync.RWMutex
 	docs map[protocol.DocumentURI]string
 
-	linkIdx *wikilink.Index
+	linkIdx  *wikilink.Index
+	refIdx   *refindex.Index
 }
 
 // New creates a new LSP server bound to the given vault.
@@ -53,12 +55,17 @@ func New(v *vault.Vault) *Server {
 		vault:   v,
 		docs:    make(map[protocol.DocumentURI]string),
 		linkIdx: wikilink.NewIndex(),
+		refIdx:  refindex.NewIndex(),
 	}
 }
 
 // LinkIndex exposes the wikilink index so the sidecar can refresh it from
 // filesystem watcher events that fire outside of LSP didSave.
 func (s *Server) LinkIndex() *wikilink.Index { return s.linkIdx }
+
+// RefIndex exposes the reference index so the sidecar can refresh it alongside
+// the wikilink index on filesystem watcher events and vault/refresh calls.
+func (s *Server) RefIndex() *refindex.Index { return s.refIdx }
 
 // Vault exposes the underlying vault for sidecar coordination (e.g., the
 // fsnotify watcher needs to read changed files to update the index).
@@ -185,19 +192,18 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 				CodeActionKinds: []protocol.CodeActionKind{protocol.QuickFix},
 			},
 			// RenameProvider and ExecuteCommandProvider intentionally omitted.
-			// Rename ships in v0.2 (cross-vault refactor lives in the RPC channel,
-			// not in LSP rename). ExecuteCommand has no commands to advertise in
-			// v0.1 — createNote returns in Phase C as createFromHierarchy.
+			// Cross-vault rename lives in the RPC channel (vault/renameNote, v0.2),
+			// not in LSP rename. ExecuteCommand has no commands to advertise.
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "muninn",
-			Version: "0.1.0",
+			Version: "0.2.0",
 		},
 	}
 	return reply(ctx, result, nil)
 }
 
-// buildLinkIndex loads all notes and populates the wikilink index.
+// buildLinkIndex loads all notes and populates the wikilink and reference indexes.
 func (s *Server) buildLinkIndex() {
 	files, err := s.vault.ListNotes()
 	if err != nil {
@@ -210,6 +216,21 @@ func (s *Server) buildLinkIndex() {
 		}
 		links := wikilink.Extract(content)
 		s.linkIdx.Update(f, links)
+
+		parsed := markdown.NewParser().Parse(content)
+		fmEntries := markdown.ParseFrontmatter(parsed.Frontmatter)
+		fmMap := make(map[string]any, len(fmEntries))
+		for _, e := range fmEntries {
+			fmMap[e.Key] = e.Value
+		}
+		noteName := strings.TrimSuffix(f, ".md")
+		var sch *schema.Schema
+		if s.schemas != nil {
+			if matches := s.schemas.ApplicableTo(noteName); len(matches) > 0 {
+				sch = matches[0]
+			}
+		}
+		s.refIdx.Update(f, refindex.ExtractEdges(sch, fmMap))
 	}
 }
 

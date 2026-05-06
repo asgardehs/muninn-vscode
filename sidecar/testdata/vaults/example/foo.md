@@ -7,4 +7,4 @@ title: Foo
 The root of the example hierarchy. Children: [[foo.bar]].
 
 This file demonstrates a top-level node with a real markdown body, while
-[[foo.bar.baz]] hangs off [[foo.bar]] further down.
+[[foo.bar.baz]] hangs off [[foo.bar]] further down. [[people.john-doe]]]]

@@ -10,8 +10,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"strings"
+
 	"github.com/asgardehs/muninn-sidecar/internal/env"
 	"github.com/asgardehs/muninn-sidecar/internal/lsp"
+	"github.com/asgardehs/muninn-sidecar/internal/markdown"
+	"github.com/asgardehs/muninn-sidecar/internal/refindex"
 	"github.com/asgardehs/muninn-sidecar/internal/rpc"
 	"github.com/asgardehs/muninn-sidecar/internal/schema"
 	"github.com/asgardehs/muninn-sidecar/internal/transport"
@@ -21,7 +25,7 @@ import (
 
 // version is the development fallback. Released binaries override this via
 // -ldflags "-X main.version=..." in scripts/build-sidecar.sh.
-var version = "0.1.0"
+var version = "0.2.0"
 
 func main() {
 	workspace := flag.String("workspace", "", "vault root path (defaults to current directory)")
@@ -154,6 +158,7 @@ func main() {
 func runWatcher(ctx context.Context, lspServer *lsp.Server, fw *transport.FrameWriter, logger *log.Logger) {
 	v := lspServer.Vault()
 	idx := lspServer.LinkIndex()
+	refIdx := lspServer.RefIndex()
 
 	changes, err := v.Watch(ctx, logger)
 	if err != nil {
@@ -164,17 +169,18 @@ func runWatcher(ctx context.Context, lspServer *lsp.Server, fw *transport.FrameW
 	for change := range changes {
 		switch change.Source {
 		case vault.SourceNote:
-			handleNoteChange(ctx, change, v, idx, lspServer, fw, logger)
+			handleNoteChange(ctx, change, v, idx, refIdx, lspServer, fw, logger)
 		case vault.SourceSchema:
 			handleSchemaChange(ctx, change, lspServer, fw, logger)
 		}
 	}
 }
 
-func handleNoteChange(ctx context.Context, change vault.Change, v *vault.Vault, idx *wikilink.Index, lspServer *lsp.Server, fw *transport.FrameWriter, logger *log.Logger) {
+func handleNoteChange(ctx context.Context, change vault.Change, v *vault.Vault, idx *wikilink.Index, refIdx *refindex.Index, lspServer *lsp.Server, fw *transport.FrameWriter, logger *log.Logger) {
 	switch change.Kind {
 	case vault.ChangeDelete:
 		idx.Remove(change.RelPath)
+		refIdx.Remove(change.RelPath)
 	case vault.ChangeCreate, vault.ChangeModify:
 		content, err := v.ReadNote(change.RelPath)
 		if err != nil {
@@ -182,6 +188,22 @@ func handleNoteChange(ctx context.Context, change vault.Change, v *vault.Vault, 
 			return
 		}
 		idx.Update(change.RelPath, wikilink.Extract(content))
+
+		parsed := markdown.NewParser().Parse(content)
+		fmEntries := markdown.ParseFrontmatter(parsed.Frontmatter)
+		fmMap := make(map[string]any, len(fmEntries))
+		for _, e := range fmEntries {
+			fmMap[e.Key] = e.Value
+		}
+		noteName := strings.TrimSuffix(change.RelPath, ".md")
+		var sch *schema.Schema
+		registry := lspServer.Schemas()
+		if registry != nil {
+			if matches := registry.ApplicableTo(noteName); len(matches) > 0 {
+				sch = matches[0]
+			}
+		}
+		refIdx.Update(change.RelPath, refindex.ExtractEdges(sch, fmMap))
 	}
 	lspServer.RefreshOpenDiagnostics(ctx)
 	if err := sendNotification(fw, "vault/changed", map[string]any{
