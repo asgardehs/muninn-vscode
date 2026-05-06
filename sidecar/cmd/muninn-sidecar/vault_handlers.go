@@ -15,6 +15,7 @@ import (
 	"github.com/asgardehs/muninn-sidecar/internal/lsp"
 	"github.com/asgardehs/muninn-sidecar/internal/markdown"
 	"github.com/asgardehs/muninn-sidecar/internal/refactor"
+	"github.com/asgardehs/muninn-sidecar/internal/refindex"
 	"github.com/asgardehs/muninn-sidecar/internal/rpc"
 	"github.com/asgardehs/muninn-sidecar/internal/schema"
 	"github.com/asgardehs/muninn-sidecar/internal/vault"
@@ -467,13 +468,30 @@ func handleRefresh(server *lsp.Server) rpc.Handler {
 		if err != nil {
 			return nil, vaultErr(err)
 		}
-		idx := server.LinkIndex()
+		linkIdx := server.LinkIndex()
+		refIdx := server.RefIndex()
+		registry := server.Schemas()
 		for _, f := range notes {
 			content, err := server.Vault().ReadNote(f)
 			if err != nil {
 				continue
 			}
-			idx.Update(f, wikilink.Extract(content))
+			linkIdx.Update(f, wikilink.Extract(content))
+
+			parsed := markdown.NewParser().Parse(content)
+			fmEntries := markdown.ParseFrontmatter(parsed.Frontmatter)
+			fmMap := make(map[string]any, len(fmEntries))
+			for _, e := range fmEntries {
+				fmMap[e.Key] = e.Value
+			}
+			noteName := strings.TrimSuffix(f, ".md")
+			var sch *schema.Schema
+			if registry != nil {
+				if matches := registry.ApplicableTo(noteName); len(matches) > 0 {
+					sch = matches[0]
+				}
+			}
+			refIdx.Update(f, refindex.ExtractEdges(sch, fmMap))
 		}
 		return map[string]any{"noteCount": len(notes)}, nil
 	}
