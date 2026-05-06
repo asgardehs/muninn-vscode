@@ -13,6 +13,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   logger.info("activating extension");
 
+  // Register commands unconditionally so users always get a useful error
+  // message instead of "command not found" when no workspace is open.
+  // The sidecar (and therefore the client) is conditional on a workspace.
+  let client: RpcClient | null = null;
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("muninn.ping", async () => {
+      if (!client) {
+        vscode.window.showWarningMessage(
+          "Muninn: open a folder first — the sidecar starts per-workspace."
+        );
+        return;
+      }
+      try {
+        const result = await client.request("rpc/ping");
+        vscode.window.showInformationMessage(`Muninn ping: ${JSON.stringify(result)}`);
+      } catch (err) {
+        vscode.window.showErrorMessage(`Muninn ping failed: ${err}`);
+      }
+    }),
+    vscode.commands.registerCommand("muninn.showSidecarLogs", () => {
+      logger?.show();
+    })
+  );
+
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (!workspaceFolder) {
     logger.warn("no workspace folder open; sidecar will not be started");
@@ -28,30 +53,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     logger,
   });
 
-  const client = new RpcClient(sidecar, logger);
+  client = new RpcClient(sidecar, logger);
   client.onNotification((method, params) => {
     logger?.info(`notification ${method}: ${JSON.stringify(params)}`);
   });
 
   sidecar.start();
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand("muninn.ping", async () => {
-      try {
-        const result = await client.request("rpc/ping");
-        vscode.window.showInformationMessage(`Muninn ping: ${JSON.stringify(result)}`);
-      } catch (err) {
-        vscode.window.showErrorMessage(`Muninn ping failed: ${err}`);
-      }
-    }),
-    vscode.commands.registerCommand("muninn.showSidecarLogs", () => {
-      logger?.show();
-    })
-  );
-
+  const startupClient = client;
   setTimeout(async () => {
     try {
-      const result = await client.request("rpc/ping");
+      const result = await startupClient.request("rpc/ping");
       logger?.info(`startup ping ok: ${JSON.stringify(result)}`);
     } catch (err) {
       logger?.error(`startup ping failed: ${err}`);
