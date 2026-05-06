@@ -24,9 +24,7 @@
   "activationEvents": [
     "onLanguage:markdown",
     "workspaceContains:**/.muninn/",
-    "workspaceContains:**/*.md",
-    "onCommand:muninn.ping",
-    "onCommand:muninn.showSidecarLogs"
+    "workspaceContains:**/*.md"
   ],
   "contributes": {
     "commands": [
@@ -49,9 +47,19 @@
         },
         "muninn.logLevel": {
           "type": "string",
-          "enum": ["error", "warn", "info", "debug"],
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug"
+          ],
           "default": "info",
           "description": "Log verbosity for the Muninn output channel."
+        },
+        "muninn.diagnostics.unresolvedLinks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show diagnostics for unresolved [[wikilinks]] and missing heading fragments."
         }
       }
     }
@@ -65,5 +73,8 @@
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.95.0",
     "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   }
 }

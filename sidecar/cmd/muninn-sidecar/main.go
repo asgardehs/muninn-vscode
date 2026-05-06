@@ -15,6 +15,7 @@ import (
 	"github.com/asgardehs/muninn-sidecar/internal/rpc"
 	"github.com/asgardehs/muninn-sidecar/internal/transport"
 	"github.com/asgardehs/muninn-sidecar/internal/vault"
+	"github.com/asgardehs/muninn-sidecar/internal/wikilink"
 )
 
 const version = "0.0.1"
@@ -83,6 +84,14 @@ func main() {
 		lspDone <- lspServer.ServeOn(ctx, lspStream)
 	}()
 
+	// Filesystem watcher: emit vault/changed notifications and keep the
+	// wikilink index in sync with external edits.
+	watcherDone := make(chan struct{})
+	go func() {
+		defer close(watcherDone)
+		runWatcher(ctx, lspServer, mux.Writer(), logger)
+	}()
+
 	// RPC dispatcher consumes the RPC channel.
 	rpcDone := make(chan struct{})
 	go func() {
@@ -118,7 +127,45 @@ func main() {
 	_ = lspStream.Close()
 	<-rpcDone
 	<-lspDone
+	<-watcherDone
 	logger.Printf("clean shutdown")
+}
+
+// runWatcher consumes vault.Change events from the filesystem watcher,
+// updates the wikilink index, refreshes diagnostics for open documents,
+// and emits a vault/changed RPC notification per debounced batch.
+func runWatcher(ctx context.Context, lspServer *lsp.Server, fw *transport.FrameWriter, logger *log.Logger) {
+	v := lspServer.Vault()
+	idx := lspServer.LinkIndex()
+
+	changes, err := v.Watch(ctx, logger)
+	if err != nil {
+		logger.Printf("watcher: failed to start: %v", err)
+		return
+	}
+
+	for change := range changes {
+		switch change.Kind {
+		case vault.ChangeDelete:
+			idx.Remove(change.RelPath)
+		case vault.ChangeCreate, vault.ChangeModify:
+			content, err := v.ReadNote(change.RelPath)
+			if err != nil {
+				logger.Printf("watcher: read %q: %v", change.RelPath, err)
+				continue
+			}
+			idx.Update(change.RelPath, wikilink.Extract(content))
+		}
+
+		lspServer.RefreshOpenDiagnostics(ctx)
+
+		if err := sendNotification(fw, "vault/changed", map[string]any{
+			"paths": []string{change.RelPath},
+			"kind":  string(change.Kind),
+		}); err != nil {
+			logger.Printf("watcher: failed to emit vault/changed: %v", err)
+		}
+	}
 }
 
 func sendNotification(w *transport.FrameWriter, method string, params any) error {

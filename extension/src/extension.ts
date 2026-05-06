@@ -1,11 +1,14 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { LanguageClient, LanguageClientOptions } from "vscode-languageclient/node";
 import { Logger } from "./log";
 import { SidecarProcess } from "./sidecar/process";
 import { RpcClient } from "./sidecar/client";
+import { SidecarMessageReader, SidecarMessageWriter } from "./sidecar/lspBridge";
 
 let sidecar: SidecarProcess | null = null;
 let logger: Logger | null = null;
+let languageClient: LanguageClient | null = null;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   logger = new Logger("Muninn");
@@ -60,6 +63,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   sidecar.start();
 
+  const reader = new SidecarMessageReader(sidecar);
+  const writer = new SidecarMessageWriter(sidecar);
+  const clientOptions: LanguageClientOptions = {
+    documentSelector: [{ scheme: "file", language: "markdown" }],
+    outputChannel: vscode.window.createOutputChannel("Muninn LSP"),
+    initializationOptions: {
+      "diagnostics.unresolvedLinks": vscode.workspace
+        .getConfiguration("muninn")
+        .get<boolean>("diagnostics.unresolvedLinks", true),
+    },
+  };
+  languageClient = new LanguageClient(
+    "muninn-lsp",
+    "Muninn LSP",
+    () => Promise.resolve({ reader, writer }),
+    clientOptions
+  );
+  context.subscriptions.push({ dispose: () => reader.dispose() });
+  context.subscriptions.push({ dispose: () => writer.dispose() });
+  await languageClient.start();
+  logger.info("language client started");
+
   const startupClient = client;
   setTimeout(async () => {
     try {
@@ -71,8 +96,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }, 250);
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
   logger?.info("deactivating extension");
+  if (languageClient) {
+    try {
+      await languageClient.stop(2000);
+    } catch (err) {
+      logger?.warn(`language client stop: ${err}`);
+    }
+    languageClient = null;
+  }
   sidecar?.stop();
   sidecar = null;
 }

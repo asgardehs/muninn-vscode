@@ -62,6 +62,14 @@ func (s *Server) LinkIndex() *wikilink.Index { return s.linkIdx }
 // fsnotify watcher needs to read changed files to update the index).
 func (s *Server) Vault() *vault.Vault { return s.vault }
 
+// RefreshOpenDiagnostics resends diagnostics for every currently-open
+// document. The sidecar's filesystem watcher calls this after the wikilink
+// index changes so previously-broken links resolve immediately in open
+// editors without waiting for the next keystroke.
+func (s *Server) RefreshOpenDiagnostics(ctx context.Context) {
+	s.refreshAllDiagnostics(ctx)
+}
+
 // ServeOn drives the LSP server using the supplied jsonrpc2 stream. The stream
 // is provided by the sidecar's transport multiplexer (the "lsp" channel of the
 // shared stdio pipe). Returns when the connection is closed.
