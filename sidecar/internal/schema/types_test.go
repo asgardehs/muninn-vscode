@@ -35,6 +35,26 @@ frontmatter:
 	}
 }
 
+func TestParse_AcceptsReferenceWithTarget(t *testing.T) {
+	yaml := []byte(`
+id: test
+pattern: "trainings.*"
+frontmatter:
+  - key: instructor
+    type: reference
+    target: people.**
+    required: true
+`)
+	s, err := Parse(yaml)
+	if err != nil {
+		t.Fatalf("expected parse to succeed, got: %v", err)
+	}
+	f := s.FieldByKey("instructor")
+	if f == nil || f.Type != TypeReference || f.Target != "people.**" {
+		t.Errorf("parsed field = %+v", f)
+	}
+}
+
 func TestParse_RejectsReferenceWithEmptyTarget(t *testing.T) {
 	yaml := []byte(`
 id: test
