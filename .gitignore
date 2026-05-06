@@ -21,6 +21,7 @@
 # IDE / agents
 .idea/
 .claude/
+.codegraph/
 .cursor/
 *.swp
 *.swo
