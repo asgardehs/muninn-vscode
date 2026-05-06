@@ -4,6 +4,11 @@
 // the RPC channel rather than LSP — see docs/specs/v0.2.0.md.
 package refactor
 
+import (
+	"fmt"
+	"strings"
+)
+
 // FileEdit is a planned edit to one file's contents.
 type FileEdit struct {
 	Path       string // vault-relative path
@@ -20,4 +25,44 @@ type Plan struct {
 	RenameFrom string     // vault-relative file path to move from
 	RenameTo   string     // vault-relative file path to move to
 	FileEdits  []FileEdit // per-file content rewrites (backlink sources)
+}
+
+// ValidateNames checks the rename inputs for shape problems before any
+// filesystem work. Reject identical names (forbid cycles per v0.2.0 scope —
+// see docs/specs/v0.2.0.md), reject names containing path separators or
+// whitespace, reject leading/trailing/repeated dots.
+func ValidateNames(oldName, newName string) error {
+	if strings.TrimSpace(oldName) == "" {
+		return fmt.Errorf("old name is required")
+	}
+	if strings.TrimSpace(newName) == "" {
+		return fmt.Errorf("new name is required")
+	}
+	if oldName == newName {
+		return fmt.Errorf("new name is identical to old name")
+	}
+	if err := validateHierarchyName(newName); err != nil {
+		return fmt.Errorf("new name %q: %w", newName, err)
+	}
+	return nil
+}
+
+func validateHierarchyName(name string) error {
+	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
+		return fmt.Errorf("name must not start or end with '.'")
+	}
+	if strings.Contains(name, "..") {
+		return fmt.Errorf("name must not contain consecutive dots")
+	}
+	for _, r := range name {
+		switch {
+		case r == '.', r == '-', r == '_':
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		default:
+			return fmt.Errorf("name contains invalid character %q", r)
+		}
+	}
+	return nil
 }
