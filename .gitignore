@@ -1,0 +1,32 @@
+# Sidecar build artifacts
+/sidecar/dist/
+/sidecar/muninn-sidecar
+/sidecar/muninn-sidecar.exe
+/sidecar/cover.out
+/sidecar/coverage.html
+
+# Extension build artifacts
+/extension/out/
+/extension/dist/
+/extension/node_modules/
+/extension/bin/muninn-sidecar
+/extension/bin/muninn-sidecar.exe
+/extension/.vscode-test/
+*.vsix
+
+# Test
+*.test
+.nyc_output/
+
+# IDE / agents
+.idea/
+.claude/
+.cursor/
+*.swp
+*.swo
+*~
+sessionlogs/
+
+# OS
+.DS_Store
+Thumbs.db

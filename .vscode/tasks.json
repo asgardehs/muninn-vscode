@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "dependsOn": ["build:sidecar", "compile:extension"],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "build:sidecar",
+      "type": "shell",
+      "command": "go build -o dist/muninn-sidecar ./cmd/muninn-sidecar",
+      "options": { "cwd": "${workspaceFolder}/sidecar" },
+      "problemMatcher": "$go"
+    },
+    {
+      "label": "compile:extension",
+      "type": "npm",
+      "script": "compile",
+      "path": "extension",
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "watch:extension",
+      "type": "npm",
+      "script": "watch",
+      "path": "extension",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch"
+    }
+  ]
+}

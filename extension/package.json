@@ -1,0 +1,69 @@
+{
+  "name": "muninn",
+  "displayName": "Muninn",
+  "description": "Hierarchical notes for VS Code — fuzzy lookup, schema-driven creation, wikilinks.",
+  "version": "0.0.1",
+  "publisher": "asgardehs",
+  "author": {
+    "name": "Adam Bick",
+    "email": "adam.bick86@gmail.com"
+  },
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/asgardehs/muninn-vscode.git"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Notebooks",
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:markdown",
+    "workspaceContains:**/.muninn/",
+    "workspaceContains:**/*.md",
+    "onCommand:muninn.ping",
+    "onCommand:muninn.showSidecarLogs"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "muninn.ping",
+        "title": "Muninn: Ping Sidecar"
+      },
+      {
+        "command": "muninn.showSidecarLogs",
+        "title": "Muninn: Show Sidecar Logs"
+      }
+    ],
+    "configuration": {
+      "title": "Muninn",
+      "properties": {
+        "muninn.sidecarPath": {
+          "type": "string",
+          "default": "",
+          "description": "Override path to the muninn-sidecar binary (for development). Empty = use bundled binary."
+        },
+        "muninn.logLevel": {
+          "type": "string",
+          "enum": ["error", "warn", "info", "debug"],
+          "default": "info",
+          "description": "Log verbosity for the Muninn output channel."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "typecheck": "tsc --noEmit -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.95.0",
+    "typescript": "^5.6.0"
+  }
+}
