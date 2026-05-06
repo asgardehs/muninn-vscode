@@ -513,8 +513,10 @@ func handleRenameNote(server *lsp.Server) rpc.Handler {
 
 		v := server.Vault()
 		idx := server.LinkIndex()
+		refIdx := server.RefIndex()
+		registry := server.Schemas()
 
-		plan, err := refactor.BuildPlan(v, idx, p.OldName, p.NewName)
+		plan, err := refactor.BuildPlanWithRefs(v, idx, refIdx, p.OldName, p.NewName)
 		if err != nil {
 			return nil, &rpc.Error{Code: rpc.CodeVault, Message: err.Error()}
 		}
@@ -522,7 +524,7 @@ func handleRenameNote(server *lsp.Server) rpc.Handler {
 			return nil, &rpc.Error{Code: rpc.CodeVault, Message: err.Error()}
 		}
 
-		// Force the index to catch up immediately so the caller's next query
+		// Force both indexes to catch up immediately so the caller's next query
 		// reflects the rename without waiting for fsnotify.
 		notes, _ := v.ListNotes()
 		for _, f := range notes {
@@ -531,6 +533,21 @@ func handleRenameNote(server *lsp.Server) rpc.Handler {
 				continue
 			}
 			idx.Update(f, wikilink.Extract(content))
+
+			parsed := markdown.NewParser().Parse(content)
+			fmEntries := markdown.ParseFrontmatter(parsed.Frontmatter)
+			fmMap := make(map[string]any, len(fmEntries))
+			for _, e := range fmEntries {
+				fmMap[e.Key] = e.Value
+			}
+			noteName := strings.TrimSuffix(f, ".md")
+			var sch *schema.Schema
+			if registry != nil {
+				if matches := registry.ApplicableTo(noteName); len(matches) > 0 {
+					sch = matches[0]
+				}
+			}
+			refIdx.Update(f, refindex.ExtractEdges(sch, fmMap))
 		}
 
 		return map[string]any{
