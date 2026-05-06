@@ -1,0 +1,123 @@
+name: Release
+
+# Triggered when a v*.*.* tag is pushed. Cross-compiles the sidecar for five
+# platforms, builds one platform-targeted .vsix per platform, publishes each
+# to the VS Code Marketplace under the asgardehs publisher, and attaches the
+# .vsix files to a matching GitHub Release.
+#
+# Required repo secrets:
+#   VSCE_PAT  — Azure DevOps Personal Access Token with Marketplace
+#               (Manage) scope for the asgardehs publisher. Documented in
+#               docs/standards/release.md.
+#
+# A pushed tag that fails publish leaves a partial GitHub Release behind;
+# delete it (gh release delete <tag>) before re-tagging.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sidecar/go.mod
+          cache-dependency-path: sidecar/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: make test-sidecar
+      - run: cd extension && npm ci
+      - run: make test-extension
+
+  build:
+    name: Build .vsix (${{ matrix.target }})
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - linux-x64
+          - linux-arm64
+          - darwin-x64
+          - darwin-arm64
+          - win32-x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sidecar/go.mod
+          cache-dependency-path: sidecar/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: cd extension && npm ci
+      - run: ./scripts/package-vsix.sh ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.target }}
+          path: dist/vsix/*.vsix
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to Marketplace + GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: cd extension && npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/vsix
+          pattern: vsix-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist/vsix/
+
+      - name: Publish to VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [[ -z "$VSCE_PAT" ]]; then
+            echo "::error::VSCE_PAT secret is unset; cannot publish."
+            exit 1
+          fi
+          cd "$GITHUB_WORKSPACE/extension"
+          for vsix in "$GITHUB_WORKSPACE"/dist/vsix/*.vsix; do
+            echo "::group::publish $(basename "$vsix")"
+            npx --yes @vscode/vsce publish \
+              --packagePath "$vsix" \
+              --pat "$VSCE_PAT"
+            echo "::endgroup::"
+          done
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF##*/}"
+          gh release create "$tag" \
+            --title "$tag" \
+            --generate-notes \
+            dist/vsix/*.vsix
