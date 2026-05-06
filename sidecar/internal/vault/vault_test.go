@@ -84,3 +84,61 @@ func TestRootAndAbsPath(t *testing.T) {
 		t.Errorf("AbsPath: got %q, want %q", v.AbsPath("foo/bar.md"), want)
 	}
 }
+
+func TestWriteNote(t *testing.T) {
+	root := t.TempDir()
+	v := New(root)
+
+	// Write a new file.
+	if err := v.WriteNote("alpha.md", "first\n"); err != nil {
+		t.Fatalf("WriteNote (create): %v", err)
+	}
+	got, _ := v.ReadNote("alpha.md")
+	if got != "first\n" {
+		t.Errorf("after create got %q", got)
+	}
+
+	// Overwrite the same file.
+	if err := v.WriteNote("alpha.md", "second\n"); err != nil {
+		t.Fatalf("WriteNote (overwrite): %v", err)
+	}
+	got, _ = v.ReadNote("alpha.md")
+	if got != "second\n" {
+		t.Errorf("after overwrite got %q", got)
+	}
+}
+
+func TestRenameNote(t *testing.T) {
+	root := t.TempDir()
+	writeNote(t, root, "old.md", "content\n")
+	v := New(root)
+
+	if err := v.RenameNote("old.md", "new.md"); err != nil {
+		t.Fatalf("RenameNote: %v", err)
+	}
+	if v.NoteExists("old.md") {
+		t.Error("old.md should be gone after rename")
+	}
+	got, err := v.ReadNote("new.md")
+	if err != nil {
+		t.Fatalf("ReadNote after rename: %v", err)
+	}
+	if got != "content\n" {
+		t.Errorf("new.md got %q", got)
+	}
+}
+
+func TestRenameNoteCollision(t *testing.T) {
+	root := t.TempDir()
+	writeNote(t, root, "src.md", "source\n")
+	writeNote(t, root, "dst.md", "blocking\n")
+	v := New(root)
+
+	if err := v.RenameNote("src.md", "dst.md"); err == nil {
+		t.Error("expected error when destination already exists")
+	}
+	// src.md must still be intact.
+	if !v.NoteExists("src.md") {
+		t.Error("src.md should still exist after failed rename")
+	}
+}

@@ -95,6 +95,35 @@ func BuildPlan(v *vault.Vault, idx *wikilink.Index, oldName, newName string) (*P
 	return plan, nil
 }
 
+// Apply executes a Plan against the vault. Strategy:
+//  1. Write each FileEdit's NewContent.
+//  2. Rename the file.
+//  3. If anything fails, roll back any writes by restoring OldContent.
+//
+// On success the wikilink index will catch up via fsnotify; the caller can
+// also force a refresh.
+func Apply(v *vault.Vault, plan *Plan) error {
+	written := make([]FileEdit, 0, len(plan.FileEdits))
+	for _, edit := range plan.FileEdits {
+		if err := v.WriteNote(edit.Path, edit.NewContent); err != nil {
+			rollback(v, written)
+			return fmt.Errorf("write %q: %w", edit.Path, err)
+		}
+		written = append(written, edit)
+	}
+	if err := v.RenameNote(plan.RenameFrom, plan.RenameTo); err != nil {
+		rollback(v, written)
+		return fmt.Errorf("rename %q -> %q: %w", plan.RenameFrom, plan.RenameTo, err)
+	}
+	return nil
+}
+
+func rollback(v *vault.Vault, written []FileEdit) {
+	for _, e := range written {
+		_ = v.WriteNote(e.Path, e.OldContent)
+	}
+}
+
 func validateHierarchyName(name string) error {
 	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
 		return fmt.Errorf("name must not start or end with '.'")

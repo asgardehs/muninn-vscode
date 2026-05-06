@@ -85,3 +85,36 @@ func (v *Vault) CreateNote(relPath, content string) error {
 	}
 	return nil
 }
+
+// WriteNote overwrites an existing note with new content. Unlike CreateNote it
+// does not refuse if the file already exists — it is intended for in-place
+// rewrites (e.g. backlink updates during a rename operation).
+func (v *Vault) WriteNote(relPath, content string) error {
+	abs := filepath.Join(v.root, relPath)
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return fmt.Errorf("create parent dirs: %w", err)
+	}
+	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write note: %w", err)
+	}
+	return nil
+}
+
+// RenameNote moves a note from the vault-relative path `from` to `to`. It
+// explicitly checks that the destination does not already exist and returns an
+// error before attempting the OS rename — this makes cross-platform behaviour
+// consistent and keeps Apply's rollback test reliable.
+func (v *Vault) RenameNote(from, to string) error {
+	absFrom := filepath.Join(v.root, from)
+	absTo := filepath.Join(v.root, to)
+	if _, err := os.Stat(absTo); err == nil {
+		return fmt.Errorf("destination %q already exists", to)
+	}
+	if err := os.MkdirAll(filepath.Dir(absTo), 0o755); err != nil {
+		return fmt.Errorf("create parent dirs: %w", err)
+	}
+	if err := os.Rename(absFrom, absTo); err != nil {
+		return fmt.Errorf("rename %q -> %q: %w", from, to, err)
+	}
+	return nil
+}
