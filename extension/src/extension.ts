@@ -9,6 +9,7 @@ import { SidecarState } from "./sidecar/state";
 import { HierarchyTreeProvider } from "./views/hierarchyTreeProvider";
 import { lookupHerePrefill, runLookup } from "./commands/lookup";
 import { runInstallSchemaPack } from "./commands/installSchemaPack";
+import { runRenameNote } from "./commands/renameNote";
 
 let sidecar: SidecarProcess | null = null;
 let logger: Logger | null = null;
@@ -73,6 +74,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("muninn.installSchemaPack", async () => {
       if (!requireSidecar("installSchemaPack") || !client || !state || !logger) return;
       await runInstallSchemaPack(client, state, (m) => logger?.info(m));
+    }),
+    vscode.commands.registerCommand("muninn.renameNote", async () => {
+      if (!requireSidecar("renameNote") || !client || !state || !logger) return;
+      await runRenameNote(client, state, (m) => logger?.info(m));
     })
   );
 
