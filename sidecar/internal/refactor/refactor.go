@@ -7,6 +7,9 @@ package refactor
 import (
 	"fmt"
 	"strings"
+
+	"github.com/asgardehs/muninn-sidecar/internal/vault"
+	"github.com/asgardehs/muninn-sidecar/internal/wikilink"
 )
 
 // FileEdit is a planned edit to one file's contents.
@@ -45,6 +48,51 @@ func ValidateNames(oldName, newName string) error {
 		return fmt.Errorf("new name %q: %w", newName, err)
 	}
 	return nil
+}
+
+// BuildPlan returns the Plan that would rename a note from oldName to newName.
+// It does not touch the filesystem. Inputs are validated via ValidateNames.
+// The caller must have an up-to-date wikilink index (refactor does not refresh it).
+func BuildPlan(v *vault.Vault, idx *wikilink.Index, oldName, newName string) (*Plan, error) {
+	if err := ValidateNames(oldName, newName); err != nil {
+		return nil, err
+	}
+
+	oldRel := oldName + ".md"
+	newRel := newName + ".md"
+	if !v.NoteExists(oldRel) {
+		return nil, fmt.Errorf("note %q does not exist", oldName)
+	}
+	if v.NoteExists(newRel) {
+		return nil, fmt.Errorf("note %q already exists at target name", newName)
+	}
+
+	plan := &Plan{
+		OldName:    oldName,
+		NewName:    newName,
+		RenameFrom: oldRel,
+		RenameTo:   newRel,
+	}
+
+	for _, src := range idx.Backlinks(oldName) {
+		if src == oldRel {
+			continue // a note's self-references move with it
+		}
+		oldContent, err := v.ReadNote(src)
+		if err != nil {
+			return nil, fmt.Errorf("read backlink source %q: %w", src, err)
+		}
+		newContent := RewriteWikilinks(oldContent, oldName, newName)
+		if newContent == oldContent {
+			continue // no actual change (defensive)
+		}
+		plan.FileEdits = append(plan.FileEdits, FileEdit{
+			Path:       src,
+			OldContent: oldContent,
+			NewContent: newContent,
+		})
+	}
+	return plan, nil
 }
 
 func validateHierarchyName(name string) error {
