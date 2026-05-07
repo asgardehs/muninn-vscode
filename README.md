@@ -7,7 +7,7 @@ backlinks.
 
 ## For users
 
-The full feature tour lives in [extension/README.md](extension/README.md). Once v0.1.0 ships you can install Muninn from
+The full feature tour lives in [extension/README.md](extension/README.md). Install Muninn from
 the [Open VSX Registry](https://open-vsx.org/extension/pharomwinters/muninn) (VSCodium, Cursor, Theia, Gitpod,
 code-server) or sideload a `.vsix` from the [GitHub Releases](https://github.com/asgardehs/muninn-vscode/releases) page
 on stock VS Code.
