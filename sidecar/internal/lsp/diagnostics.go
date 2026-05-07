@@ -17,8 +17,14 @@ import (
 
 // publishDiagnostics emits broken-wikilink, broken-fragment, YAML-parse, and
 // schema-violation diagnostics for the given document.
+//
+// The slice is initialized non-nil so it always marshals to a JSON `[]` rather
+// than `null`. vscode-languageclient's diagnostic queue calls `.length` on the
+// payload during conversion; a `null` payload throws and the diagnostic
+// collection is never updated, leaving stale errors visible until the user
+// reloads the window.
 func (s *Server) publishDiagnostics(ctx context.Context, docURI protocol.DocumentURI, text string) {
-	var diagnostics []protocol.Diagnostic
+	diagnostics := make([]protocol.Diagnostic, 0)
 
 	if configEnabled(s.config.DiagnosticsUnresolved) {
 		diagnostics = append(diagnostics, s.brokenLinkDiagnostics(text)...)

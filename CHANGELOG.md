@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 (no unreleased changes)
 
+## [0.2.1] - 2026-05-07
+
+### Issue
+
+Errors not clearing once corrected.
+
+- **Root cause:** diagnostics.go:20 declared `var diagnostics []protocol.Diagnostic` — a nil slice. When no violations existed, that nil slice marshaled to JSON `null`, not `[]`. vscode-languageclient's diagnostic queue calls `.length` on the payload during conversion (async.js:185) — `null.length` throws a TypeError, the promise rejects silently, and `setDiagnostics` is never called. Stale errors persist.
+- **Window reload masked it:** a fresh language client starts with an empty diagnostic collection, so the same `null` payload looks like a clear because there was nothing to clear.
+- **Fix:** sidecar/internal/lsp/diagnostics.go:27 — initialize as `make([]protocol.Diagnostic, 0)` so the wire payload is always `"diagnostics":[]`.
+- **Regression test:** sidecar/internal/lsp/diagnostics_test.go — calls `publishDiagnostics` against a capturing `jsonrpc2.Conn` stub and asserts the wire JSON is `[]` not `null`. Verified it fails on the buggy code and passes on the fix. Full sidecar suite still green.
+
 ## [0.2.0] - 2026-05-06
 
 ### Added
